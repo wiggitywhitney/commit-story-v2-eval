@@ -12,6 +12,10 @@
 
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import { ChatAnthropic } from '@langchain/anthropic';
+import { getAllGuidelines } from './prompts/guidelines/index.js';
+import { summaryPrompt } from './prompts/sections/summary-prompt.js';
+import { dialoguePrompt } from './prompts/sections/dialogue-prompt.js';
+import { technicalDecisionsPrompt } from './prompts/sections/technical-decisions-prompt.js';
 
 /**
  * Journal state definition using LangGraph Annotation API
@@ -62,19 +66,144 @@ export function resetModel() {
 }
 
 /**
+ * Analyze diff to determine if it contains functional code changes
+ * (not just documentation or config files)
+ * @param {string} diff - Git diff content
+ * @returns {boolean} Whether the diff contains functional code changes
+ */
+function hasFunctionalCode(diff) {
+  if (!diff) return false;
+
+  // Documentation and config file patterns
+  const docPatterns = [
+    /^[+-]{3} [ab]\/.*\.md$/gm,
+    /^[+-]{3} [ab]\/.*\.txt$/gm,
+    /^[+-]{3} [ab]\/.*\.json$/gm,
+    /^[+-]{3} [ab]\/.*\.ya?ml$/gm,
+    /^[+-]{3} [ab]\/.*\.toml$/gm,
+    /^[+-]{3} [ab]\/.*\.ini$/gm,
+    /^[+-]{3} [ab]\/.*\.env.*$/gm,
+    /^[+-]{3} [ab]\/.*\.gitignore$/gm,
+    /^[+-]{3} [ab]\/.*LICENSE.*$/gm,
+    /^[+-]{3} [ab]\/.*README.*$/gm,
+    /^[+-]{3} [ab]\/.*CHANGELOG.*$/gm,
+  ];
+
+  // Code file patterns
+  const codePatterns = [
+    /^[+-]{3} [ab]\/.*\.js$/gm,
+    /^[+-]{3} [ab]\/.*\.ts$/gm,
+    /^[+-]{3} [ab]\/.*\.jsx$/gm,
+    /^[+-]{3} [ab]\/.*\.tsx$/gm,
+    /^[+-]{3} [ab]\/.*\.py$/gm,
+    /^[+-]{3} [ab]\/.*\.rb$/gm,
+    /^[+-]{3} [ab]\/.*\.go$/gm,
+    /^[+-]{3} [ab]\/.*\.rs$/gm,
+    /^[+-]{3} [ab]\/.*\.java$/gm,
+    /^[+-]{3} [ab]\/.*\.c$/gm,
+    /^[+-]{3} [ab]\/.*\.cpp$/gm,
+    /^[+-]{3} [ab]\/.*\.h$/gm,
+    /^[+-]{3} [ab]\/.*\.sh$/gm,
+  ];
+
+  // Check if any code files are in the diff
+  for (const pattern of codePatterns) {
+    if (pattern.test(diff)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Determine if chat messages contain substantial discussion
+ * (not just simple commands or acknowledgments)
+ * @param {object[]} messages - Chat messages
+ * @returns {boolean} Whether there's substantial discussion
+ */
+function hasSubstantialChat(messages) {
+  if (!messages || messages.length === 0) return false;
+
+  // Count user messages with meaningful content
+  const substantialMessages = messages.filter((msg) => {
+    if (msg.type !== 'user') return false;
+
+    const content = (msg.content || '').trim();
+    // Skip very short messages (likely commands or acknowledgments)
+    if (content.length < 50) return false;
+
+    // Skip simple command patterns
+    const simplePatterns = [
+      /^(yes|no|ok|okay|sure|thanks|thank you|got it|done|proceed|continue)\.?$/i,
+      /^(y|n)$/i,
+      /^\/\w+/, // slash commands
+    ];
+
+    for (const pattern of simplePatterns) {
+      if (pattern.test(content)) return false;
+    }
+
+    return true;
+  });
+
+  // Consider substantial if there are at least 2 meaningful user messages
+  return substantialMessages.length >= 2;
+}
+
+/**
+ * Format chat messages for prompt inclusion
+ * Uses JSON format for clear type identification
+ * @param {object[]} messages - Filtered chat messages
+ * @returns {string} Formatted messages
+ */
+function formatChatMessages(messages) {
+  if (!messages || messages.length === 0) {
+    return '*No conversation captured for this time window*';
+  }
+
+  return messages
+    .map((msg) => {
+      const type = msg.type === 'user' ? 'user' : 'assistant';
+      const date = msg.timestamp ? new Date(msg.timestamp) : null;
+      const time = date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString() : '';
+      return `{"type":"${type}", "time":"${time}", "content":"${escapeForJson(msg.content)}"}`;
+    })
+    .join('\n\n');
+}
+
+/**
+ * Escape content for JSON string inclusion
+ * @param {string} content - Content to escape
+ * @returns {string} Escaped content
+ */
+function escapeForJson(content) {
+  if (!content) return '';
+  return content
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+}
+
+/**
  * Summary generation node
  * Creates a narrative overview of the commit
  */
 async function summaryNode(state) {
   try {
     const { context } = state;
+    const guidelines = getAllGuidelines();
+    const hasFunctional = hasFunctionalCode(context.commit.diff);
+    const hasChat = hasSubstantialChat(context.chat.messages);
+    const sectionPrompt = summaryPrompt(hasFunctional, hasChat);
 
-    const prompt = `You have been given development context for a git commit.
+    const prompt = `${guidelines}
 
-Step 1: Analyze the git diff to understand what changed
-Step 2: Review the chat messages for WHY these changes were made
-Step 3: Identify the key narrative arc (problem → solution)
-Step 4: Write a 2-3 sentence summary focusing on the "why"
+${sectionPrompt}
+
+---
 
 ## Commit Information
 **Hash**: ${context.commit.shortHash}
@@ -87,9 +216,7 @@ ${context.commit.diff || 'No diff available'}
 \`\`\`
 
 ## Development Conversation
-${formatChatMessages(context.chat.messages)}
-
-Write your summary (2-3 sentences, focus on the "why"):`;
+${formatChatMessages(context.chat.messages)}`;
 
     const result = await getModel().invoke([{ role: 'user', content: prompt }]);
 
@@ -109,13 +236,13 @@ Write your summary (2-3 sentences, focus on the "why"):`;
 async function technicalNode(state) {
   try {
     const { context } = state;
+    const guidelines = getAllGuidelines();
 
-    const prompt = `You have been given development context including code changes and discussion.
+    const prompt = `${guidelines}
 
-Step 1: Identify decisions about architecture, libraries, or approaches
-Step 2: Note whether each was made, discussed, or deferred
-Step 3: Include brief rationale when available
-Step 4: Format as bullet points with decision status
+${technicalDecisionsPrompt}
+
+---
 
 ## Commit Information
 **Hash**: ${context.commit.shortHash}
@@ -127,9 +254,7 @@ ${context.commit.diff || 'No diff available'}
 \`\`\`
 
 ## Development Conversation
-${formatChatMessages(context.chat.messages)}
-
-Extract technical decisions (bullet points with status - Made/Discussed/Deferred):`;
+${formatChatMessages(context.chat.messages)}`;
 
     const result = await getModel().invoke([{ role: 'user', content: prompt }]);
 
@@ -150,20 +275,23 @@ Extract technical decisions (bullet points with status - Made/Discussed/Deferred
 async function dialogueNode(state) {
   try {
     const { context, summary } = state;
+    const guidelines = getAllGuidelines();
+    const maxQuotes = 4;
 
-    const prompt = `You have been given chat messages from a development session.
+    // Replace {maxQuotes} placeholder in prompt
+    const sectionPrompt = dialoguePrompt.replace(/{maxQuotes}/g, String(maxQuotes));
 
-The summary of this work is: ${summary}
+    const prompt = `${guidelines}
 
-Step 1: Identify messages where the human explains their thinking
-Step 2: Select 2-4 quotes that reveal intent, decisions, or insights
-Step 3: Ensure quotes don't repeat what's in the summary
-Step 4: Format as "Human:" followed by the quote
+The summary of this development session is:
+${summary}
+
+${sectionPrompt}
+
+---
 
 ## Development Conversation
-${formatChatMessages(context.chat.messages)}
-
-Extract the dialogue (2-4 quotes, format as "Human: [quote]"):`;
+${formatChatMessages(context.chat.messages)}`;
 
     const result = await getModel().invoke([{ role: 'user', content: prompt }]);
 
@@ -174,25 +302,6 @@ Extract the dialogue (2-4 quotes, format as "Human: [quote]"):`;
       errors: [`Dialogue extraction failed: ${error.message}`],
     };
   }
-}
-
-/**
- * Format chat messages for prompt inclusion
- * @param {object[]} messages - Filtered chat messages
- * @returns {string} Formatted messages
- */
-function formatChatMessages(messages) {
-  if (!messages || messages.length === 0) {
-    return '*No conversation captured for this time window*';
-  }
-
-  return messages
-    .map((msg) => {
-      const role = msg.type === 'user' ? '**Human**' : '**Assistant**';
-      const time = new Date(msg.timestamp).toLocaleTimeString();
-      return `${role} (${time}):\n${msg.content}`;
-    })
-    .join('\n\n');
 }
 
 /**
@@ -251,4 +360,12 @@ export async function generateJournalSections(context) {
 }
 
 // Export node functions for testing
-export { summaryNode, technicalNode, dialogueNode, formatChatMessages, buildGraph };
+export {
+  summaryNode,
+  technicalNode,
+  dialogueNode,
+  formatChatMessages,
+  buildGraph,
+  hasFunctionalCode,
+  hasSubstantialChat,
+};
