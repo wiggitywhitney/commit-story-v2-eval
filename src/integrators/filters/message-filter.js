@@ -7,6 +7,19 @@
  */
 
 /**
+ * Detect if a message is too short to be meaningful dialogue
+ *
+ * Very short responses like "y", "ok", "k" don't add value to the journal.
+ *
+ * @param {string} content - Text content of the message
+ * @returns {boolean} True if message is too short (3 chars or less)
+ */
+function isTooShortMessage(content) {
+  if (!content) return true;
+  return content.trim().length <= 3;
+}
+
+/**
  * Detect if a message is system noise (bash output, commands, system tags)
  *
  * These are automatically generated messages from Claude Code that contain
@@ -172,6 +185,7 @@ export function filterMessages(messages) {
       toolResult: 0,
       planInjection: 0,
       systemNoise: 0,
+      tooShort: 0,
     },
   };
 
@@ -215,6 +229,13 @@ export function filterMessages(messages) {
       if (message.type === 'user' && isPlanInjectionMessage(textContent)) {
         stats.filtered++;
         stats.byReason.planInjection++;
+        continue;
+      }
+
+      // Filter very short messages (3 chars or less) - not meaningful dialogue
+      if (message.type === 'user' && isTooShortMessage(textContent)) {
+        stats.filtered++;
+        stats.byReason.tooShort++;
         continue;
       }
 

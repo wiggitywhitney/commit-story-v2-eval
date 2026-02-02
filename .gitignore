@@ -30,4 +30,4 @@ journal/
 # Secrets
 *.pem
 *.key
-vals.yaml
+.vals.yaml
