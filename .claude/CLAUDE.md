@@ -109,6 +109,27 @@ This project will be distributed as an npm package. Avoid bloat:
 - **Node.js** with ES modules
 - **No telemetry** - this will be added by an instrumentation agent later
 
+## Secrets Management (vals)
+
+This project uses [vals](https://github.com/helmfile/vals) for secrets management, pulling from GCP Secrets Manager.
+
+**Running commands with secrets:**
+```bash
+vals exec -f .vals.yaml -- node src/index.js HEAD
+```
+
+**Exporting secrets to shell (for MCP servers):**
+```bash
+eval $(vals eval -f .vals.yaml --output shell)
+```
+
+**Viewing resolved values:**
+```bash
+vals eval -f .vals.yaml
+```
+
+Secrets are configured in `.vals.yaml` (gitignored). See `.vals.yaml` for the full list of available secrets.
+
 ## Reference Materials
 
 ### In This Repo

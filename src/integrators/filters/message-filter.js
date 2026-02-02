@@ -1,9 +1,76 @@
 /**
  * Message Filter - Filters noisy messages from chat context
  *
- * Removes tool calls, tool results, meta messages, and empty content
+ * Removes tool calls, tool results, meta messages, empty content,
+ * and plan-injection messages (AI-generated plans pasted as user messages)
  * while preserving human/assistant dialogue and context capture tool calls.
  */
+
+/**
+ * Detect if a message is too short to be meaningful dialogue
+ *
+ * Very short responses like "y", "ok", "k" don't add value to the journal.
+ *
+ * @param {string} content - Text content of the message
+ * @returns {boolean} True if message is too short (3 chars or less)
+ */
+function isTooShortMessage(content) {
+  if (!content) return true;
+  return content.trim().length <= 3;
+}
+
+/**
+ * Detect if a message is system noise (bash output, commands, system tags)
+ *
+ * These are automatically generated messages from Claude Code that contain
+ * command output, not actual human dialogue.
+ *
+ * @param {string} content - Text content of the message
+ * @returns {boolean} True if this is system noise
+ */
+function isSystemNoiseMessage(content) {
+  if (!content) return false;
+
+  // System noise patterns - these are not genuine dialogue
+  const noisePatterns = [
+    /^<bash-stdout>/,
+    /^<bash-input>/,
+    /^<local-command-caveat>/,
+    /^\[Request interrupted/,
+  ];
+
+  return noisePatterns.some((pattern) => pattern.test(content));
+}
+
+/**
+ * Detect if a message is a plan-injection (AI-generated plan pasted as user message)
+ *
+ * When plan mode exits, Claude Code injects the approved plan as a `type: "user"` message.
+ * This content is AI-generated (markdown structure, analysis, reasoning) but appears
+ * as a user message. We filter these to prevent the dialogue extractor from quoting
+ * AI-generated content as human speech.
+ *
+ * @param {string} content - Text content of the message
+ * @returns {boolean} True if this looks like a plan-injection message
+ */
+function isPlanInjectionMessage(content) {
+  // Plan injections are typically long and structured
+  if (!content || content.length < 500) {
+    return false;
+  }
+
+  // Check for plan markers - patterns that indicate AI-generated plan content
+  const planMarkers = [
+    /^Implement the following plan:/i,
+    /^# .+\n\n## /m, // Markdown doc structure (# Title\n\n## Section)
+    /\n\| .+ \| .+ \|/, // Markdown tables
+    /\*\*Root cause\*\*:/i,
+    /\*\*Problem\*\*:/i,
+    /^## (Problem|Solution|Implementation|Verification)/m,
+  ];
+
+  return planMarkers.some((marker) => marker.test(content));
+}
 
 /**
  * Check if a message should be filtered out
@@ -116,6 +183,9 @@ export function filterMessages(messages) {
       emptyContent: 0,
       toolUse: 0,
       toolResult: 0,
+      planInjection: 0,
+      systemNoise: 0,
+      tooShort: 0,
     },
   };
 
@@ -145,13 +215,37 @@ export function filterMessages(messages) {
         }
       }
     } else {
+      // Additional checks for user messages
+      const textContent = extractTextContent(message);
+
+      // Filter system noise (bash output, commands, system tags)
+      if (message.type === 'user' && isSystemNoiseMessage(textContent)) {
+        stats.filtered++;
+        stats.byReason.systemNoise++;
+        continue;
+      }
+
+      // Filter plan-injection messages (AI-generated plans pasted as user messages)
+      if (message.type === 'user' && isPlanInjectionMessage(textContent)) {
+        stats.filtered++;
+        stats.byReason.planInjection++;
+        continue;
+      }
+
+      // Filter very short messages (3 chars or less) - not meaningful dialogue
+      if (message.type === 'user' && isTooShortMessage(textContent)) {
+        stats.filtered++;
+        stats.byReason.tooShort++;
+        continue;
+      }
+
       stats.preserved++;
       filtered.push({
         uuid: message.uuid,
         sessionId: message.sessionId,
         type: message.type,
         timestamp: message.timestamp,
-        content: extractTextContent(message),
+        content: textContent,
         // Preserve context capture info if present
         isContextCapture: Array.isArray(message.message?.content)
           ? message.message.content.some(

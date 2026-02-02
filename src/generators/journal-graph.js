@@ -12,6 +12,7 @@
 
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import { ChatAnthropic } from '@langchain/anthropic';
+import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { getAllGuidelines } from './prompts/guidelines/index.js';
 import { summaryPrompt } from './prompts/sections/summary-prompt.js';
 import { dialoguePrompt } from './prompts/sections/dialogue-prompt.js';
@@ -188,24 +189,15 @@ function escapeForJson(content) {
 }
 
 /**
- * Summary generation node
- * Creates a narrative overview of the commit
+ * Format context data as user message content
+ * @param {object} context - Context data
+ * @param {object} options - Formatting options
+ * @returns {string} Formatted user message
  */
-async function summaryNode(state) {
-  try {
-    const { context } = state;
-    const guidelines = getAllGuidelines();
-    const hasFunctional = hasFunctionalCode(context.commit.diff);
-    const hasChat = hasSubstantialChat(context.chat.messages);
-    const sectionPrompt = summaryPrompt(hasFunctional, hasChat);
+function formatContextForUser(context, options = {}) {
+  const { includeSummary } = options;
 
-    const prompt = `${guidelines}
-
-${sectionPrompt}
-
----
-
-## Commit Information
+  let userContent = `## Commit Information
 **Hash**: ${context.commit.shortHash}
 **Author**: ${context.commit.author}
 **Message**: ${context.commit.message}
@@ -218,7 +210,38 @@ ${context.commit.diff || 'No diff available'}
 ## Development Conversation
 ${formatChatMessages(context.chat.messages)}`;
 
-    const result = await getModel().invoke([{ role: 'user', content: prompt }]);
+  if (includeSummary) {
+    userContent = `## Session Summary
+${options.summary}
+
+${userContent}`;
+  }
+
+  return userContent;
+}
+
+/**
+ * Summary generation node
+ * Creates a narrative overview of the commit
+ */
+async function summaryNode(state) {
+  try {
+    const { context } = state;
+    const guidelines = getAllGuidelines();
+    const hasFunctional = hasFunctionalCode(context.commit.diff);
+    const hasChat = hasSubstantialChat(context.chat.messages);
+    const sectionPrompt = summaryPrompt(hasFunctional, hasChat);
+
+    const systemContent = `${guidelines}
+
+${sectionPrompt}`;
+
+    const userContent = formatContextForUser(context);
+
+    const result = await getModel().invoke([
+      new SystemMessage(systemContent),
+      new HumanMessage(userContent),
+    ]);
 
     return { summary: result.content };
   } catch (error) {
@@ -238,25 +261,16 @@ async function technicalNode(state) {
     const { context } = state;
     const guidelines = getAllGuidelines();
 
-    const prompt = `${guidelines}
+    const systemContent = `${guidelines}
 
-${technicalDecisionsPrompt}
+${technicalDecisionsPrompt}`;
 
----
+    const userContent = formatContextForUser(context);
 
-## Commit Information
-**Hash**: ${context.commit.shortHash}
-**Message**: ${context.commit.message}
-
-## Code Changes
-\`\`\`diff
-${context.commit.diff || 'No diff available'}
-\`\`\`
-
-## Development Conversation
-${formatChatMessages(context.chat.messages)}`;
-
-    const result = await getModel().invoke([{ role: 'user', content: prompt }]);
+    const result = await getModel().invoke([
+      new SystemMessage(systemContent),
+      new HumanMessage(userContent),
+    ]);
 
     return { technicalDecisions: result.content };
   } catch (error) {
@@ -281,19 +295,19 @@ async function dialogueNode(state) {
     // Replace {maxQuotes} placeholder in prompt
     const sectionPrompt = dialoguePrompt.replace(/{maxQuotes}/g, String(maxQuotes));
 
-    const prompt = `${guidelines}
+    const systemContent = `${guidelines}
 
 The summary of this development session is:
 ${summary}
 
-${sectionPrompt}
+${sectionPrompt}`;
 
----
+    const userContent = formatContextForUser(context, { includeSummary: false });
 
-## Development Conversation
-${formatChatMessages(context.chat.messages)}`;
-
-    const result = await getModel().invoke([{ role: 'user', content: prompt }]);
+    const result = await getModel().invoke([
+      new SystemMessage(systemContent),
+      new HumanMessage(userContent),
+    ]);
 
     return { dialogue: result.content };
   } catch (error) {
@@ -365,6 +379,7 @@ export {
   technicalNode,
   dialogueNode,
   formatChatMessages,
+  formatContextForUser,
   buildGraph,
   hasFunctionalCode,
   hasSubstantialChat,

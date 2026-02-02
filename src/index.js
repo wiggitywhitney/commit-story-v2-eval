@@ -15,6 +15,7 @@
  *   2 - Skipped (journal-only commit, empty merge)
  */
 
+import './utils/config.js'; // Load environment variables first
 import { execFileSync } from 'node:child_process';
 import { gatherContextForCommit } from './integrators/context-integrator.js';
 import { generateJournalSections } from './generators/journal-graph.js';
