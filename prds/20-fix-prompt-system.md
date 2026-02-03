@@ -60,7 +60,7 @@ None - this is a standalone fix to the existing prompt system.
 ## Milestones
 
 ### Milestone 1: Restore Guidelines to All Nodes
-**Status**: Complete ✅
+**Status**: Not Started
 
 Update `src/generators/journal-graph.js` to apply guidelines to technicalNode and dialogueNode, not just summaryNode.
 
@@ -74,7 +74,7 @@ Update `src/generators/journal-graph.js` to apply guidelines to technicalNode an
 ---
 
 ### Milestone 2: Restructure Dialogue Prompt
-**Status**: Complete ✅
+**Status**: Not Started
 
 Update `src/generators/prompts/sections/dialogue-prompt.js` with v1-style architecture.
 
@@ -90,7 +90,7 @@ Update `src/generators/prompts/sections/dialogue-prompt.js` with v1-style archit
 ---
 
 ### Milestone 3: Restructure Technical Decisions Prompt
-**Status**: Complete ✅
+**Status**: Not Started
 
 Update `src/generators/prompts/sections/technical-decisions-prompt.js` with v1-style architecture.
 
@@ -106,7 +106,7 @@ Update `src/generators/prompts/sections/technical-decisions-prompt.js` with v1-s
 ---
 
 ### Milestone 4: Strengthen Guidelines
-**Status**: Complete ✅
+**Status**: Not Started
 
 Update guidelines files to be more explicit about preventing AI process talk.
 
@@ -125,7 +125,7 @@ Update guidelines files to be more explicit about preventing AI process talk.
 ---
 
 ### Milestone 5: Add Schema Verification Functions
-**Status**: Complete ✅
+**Status**: Not Started
 
 Add code-based verification in `src/generators/journal-graph.js` to validate AI output against source data.
 
@@ -151,21 +151,19 @@ verifyTechnicalDecisions(result, messages)
 ---
 
 ### Milestone 6: Test in cluster-whisperer
-**Status**: Complete ✅
+**Status**: Not Started
 
-Verified the fix works by testing with commit 8bd4b7f in cluster-whisperer.
+Verify the fix works by testing with real commits in cluster-whisperer.
 
 **Test checklist:**
-- [x] Summary starts with what changed, not AI process talk
-- [x] No "I'll", "Let me", "Great question" in any section
-- [x] Dialogue quotes appear verbatim in original type:"user" messages
-- [x] Technical decisions reference actual chat discussion
-- [x] Third-person voice ("the developer") maintained throughout
-- [x] Empty results returned when insufficient context (not hallucinated content)
+- [ ] Summary starts with what changed, not AI process talk
+- [ ] No "I'll", "Let me", "Great question" in any section
+- [ ] Dialogue quotes appear verbatim in original type:"user" messages
+- [ ] Technical decisions reference actual chat discussion
+- [ ] Third person voice ("the developer") maintained throughout
+- [ ] Empty results returned when insufficient context (not hallucinated content)
 
 **Done when**: Generated journal entries pass all checklist items.
-
-**Note**: Fixed schema bug during testing - assistant field needed to be optional (undefined) not just nullable (null).
 
 ---
 
@@ -187,11 +185,4 @@ Verified the fix works by testing with commit 8bd4b7f in cluster-whisperer.
 
 ## Progress Log
 
-**2026-02-03**: All milestones complete ✅
-- Verified guidelines already applied to all nodes (M1)
-- Verified dialogue prompt already has step-based architecture (M2)
-- Added "Code Archivist" role to technical decisions prompt (M3)
-- Strengthened anti-hallucination guidelines with type:"assistant" rules (M4)
-- Added Zod schemas, verification functions, and structured output (M5)
-- Tested in cluster-whisperer - fix verified working (M6)
-- Fixed schema bug: assistant field needed optional() not just nullable()
+_No progress yet - PRD just created_

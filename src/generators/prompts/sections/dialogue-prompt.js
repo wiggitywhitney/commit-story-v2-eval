@@ -37,8 +37,20 @@ CRITICAL RULES:
 - type:"assistant" messages are AI - use only for context, not as human quotes
 - Never paraphrase - use exact words only, with [...] to truncate
 
-OUTPUT REQUIREMENTS:
-- Only include genuine quotes from type:"user" messages
-- If no genuine quotes exist, return an empty quotes array
-- No commentary, no analysis, no step descriptions
+OUTPUT FORMAT:
+If meaningful quotes exist, output ONLY formatted quotes like this:
+
+> **Human:** "[Quote text]"
+> **Assistant:** "[...] [Relevant part of assistant response]"
+
+> **Human:** "[Another quote]"
+
+Keep Human-Assistant exchanges grouped together (no blank line between them).
+Add blank lines only BETWEEN conversational exchanges.
+Always use "Human:" not "User:".
+
+If no genuine quotes exist, output ONLY:
+"No significant dialogue found for this development session"
+
+OUTPUT ONLY THE FORMATTED QUOTES OR THE "NO SIGNIFICANT DIALOGUE" MESSAGE. No commentary, no analysis, no step descriptions.
 `.trim();
