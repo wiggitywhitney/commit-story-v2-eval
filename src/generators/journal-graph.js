@@ -107,6 +107,29 @@ function getStructuredModel(schema) {
 }
 
 /**
+ * Fix double-encoded structured output
+ * Sometimes the model returns arrays as JSON strings instead of actual arrays
+ * This function detects and fixes that issue
+ * @param {object} result - The structured output result
+ * @param {string} arrayField - The field name that should be an array
+ * @returns {object} Fixed result with properly parsed array
+ */
+function fixDoubleEncodedOutput(result, arrayField) {
+  if (result && typeof result[arrayField] === 'string') {
+    try {
+      const parsed = JSON.parse(result[arrayField]);
+      if (Array.isArray(parsed)) {
+        return { ...result, [arrayField]: parsed };
+      }
+    } catch {
+      // If parsing fails, return empty array
+      return { ...result, [arrayField]: [] };
+    }
+  }
+  return result;
+}
+
+/**
  * Analyze diff to determine if it contains functional code changes
  * (not just documentation or config files)
  * @param {string} diff - Git diff content
@@ -492,10 +515,13 @@ ${structuredPrompt}`;
     const userContent = formatContextForUser(context);
 
     const structuredModel = getStructuredModel(TechnicalDecisionsSchema);
-    const result = await structuredModel.invoke([
+    let result = await structuredModel.invoke([
       new SystemMessage(systemContent),
       new HumanMessage(userContent),
     ]);
+
+    // Fix double-encoded output if model returned decisions as string
+    result = fixDoubleEncodedOutput(result, 'decisions');
 
     // Verify decisions have backing in chat
     const verified = verifyTechnicalDecisions(result, context.chat.messages || []);
@@ -509,6 +535,42 @@ ${structuredPrompt}`;
       technicalDecisions: '[Technical decisions extraction failed]',
       errors: [`Technical decisions extraction failed: ${error.message}`],
     };
+  }
+}
+
+/**
+ * Try to recover double-encoded structured output from a parsing error
+ * The error message contains the raw text that failed to parse
+ * @param {Error} error - The parsing error
+ * @param {string} arrayField - The field that should be an array
+ * @returns {object|null} Recovered result or null if recovery failed
+ */
+function tryRecoverFromParsingError(error, arrayField) {
+  const errorMsg = error.message || '';
+  // Extract the raw text from error message: 'Failed to parse. Text: "..."'
+  const textMatch = errorMsg.match(/Text: "(.+)"/s);
+  if (!textMatch) return null;
+
+  try {
+    // The text is escaped in the error message, need to unescape it
+    let rawText = textMatch[1];
+    // Remove trailing ". Error: ..." if present
+    const errorIdx = rawText.lastIndexOf('". Error:');
+    if (errorIdx > 0) {
+      rawText = rawText.substring(0, errorIdx);
+    }
+
+    // Parse the outer JSON
+    const parsed = JSON.parse(rawText);
+
+    // If the array field is a string, parse it
+    if (typeof parsed[arrayField] === 'string') {
+      parsed[arrayField] = JSON.parse(parsed[arrayField]);
+    }
+
+    return parsed;
+  } catch {
+    return null;
   }
 }
 
@@ -543,11 +605,22 @@ ${structuredPrompt}`;
 
     const userContent = formatContextForUser(context, { includeSummary: false });
 
-    const structuredModel = getStructuredModel(DialogueSchema);
-    const result = await structuredModel.invoke([
-      new SystemMessage(systemContent),
-      new HumanMessage(userContent),
-    ]);
+    let result;
+    try {
+      const structuredModel = getStructuredModel(DialogueSchema);
+      result = await structuredModel.invoke([
+        new SystemMessage(systemContent),
+        new HumanMessage(userContent),
+      ]);
+      // Fix double-encoded output if model returned quotes as string
+      result = fixDoubleEncodedOutput(result, 'quotes');
+    } catch (parseError) {
+      // Try to recover from double-encoded JSON parsing error
+      result = tryRecoverFromParsingError(parseError, 'quotes');
+      if (!result) {
+        throw parseError; // Re-throw if recovery failed
+      }
+    }
 
     // Verify quotes exist in actual user messages
     const verified = verifyDialogueQuotes(result, context.chat.messages || []);
