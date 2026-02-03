@@ -268,6 +268,7 @@ function verifyDialogueQuotes(result, messages) {
     // Support truncated quotes by matching each segment in order
     // Ellipsis markers (...) split the quote into segments that must appear in order
     const segments = quoteText.split('…').filter(Boolean);
+    if (segments.length === 0) return false;
 
     return userMessages.some((msg) => {
       let searchIndex = 0;
