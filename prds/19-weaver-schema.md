@@ -117,21 +117,28 @@ Research OpenTelemetry Weaver in depth to understand:
 ---
 
 ### Milestone 5: Validate AI Readability
-**Status**: Not Started
+**Status**: ✅ Complete
 
 **Steps**:
-1. [ ] Review `docs/research/weaver-schema-research.md` - understand resolved registry output format and what AI needs to parse
-2. [ ] Run `weaver registry resolve --registry ./telemetry/registry`
-3. [ ] Capture the output (YAML/JSON)
-4. [ ] Have Claude parse it and describe the available conventions
-5. [ ] Verify Claude can identify attribute names, types, requirements, and descriptions
-6. [ ] Document the test results
+1. [x] Review `docs/research/weaver-schema-research.md` - understand resolved registry output format and what AI needs to parse
+2. [x] Run `weaver registry resolve --registry ./telemetry/registry`
+3. [x] Capture the output (YAML/JSON)
+4. [x] Have Claude parse it and describe the available conventions
+5. [x] Verify Claude can identify attribute names, types, requirements, and descriptions
+6. [x] Document the test results
 
 **Prerequisites**: Milestone 4 complete
 
 **Deliverable**: Documented test showing AI can read and interpret the schema
 
 **Done when**: AI successfully parses schema and can describe conventions accurately
+
+**Implementation Notes**:
+- Claude (claude-opus-4-5-20251101) successfully parsed the resolved registry YAML
+- Identified all 5 attribute groups (33 total attributes: 21 custom, 12 OTel)
+- Extracted enum values with descriptions for all enum types
+- Traced OTel lineage showing inheritance from standard conventions
+- Validation documented in `docs/telemetry/ai-readability-validation.md`
 
 ---
 
@@ -169,3 +176,4 @@ This PRD delivers:
 - **2026-02-03**: Swapped Milestones 2 and 3 - Import OTel semconvs FIRST, then define custom attributes only for gaps. This ensures we use standard conventions wherever possible.
 - **2026-02-03**: Milestones 2 & 3 complete - Created `telemetry/registry/` with `registry_manifest.yaml` (OTel v1.37.0 dependency) and `attributes.yaml` (5 attribute groups). Validated GenAI, VCS, RPC convention imports. Registry passes `weaver registry check`. Documented Weaver CLI in `.claude/CLAUDE.md`.
 - **2026-02-03**: Milestone 4 complete - Generated documentation using `weaver registry generate` with OTel v1.37.0 markdown templates. Output in `docs/telemetry/` directory structure. Covers all 5 attribute groups (32 total attributes), includes enum values, stability badges, and OTel attribute footnotes.
+- **2026-02-03**: Milestone 5 complete - Validated AI readability by having Claude parse `weaver registry resolve` output. Successfully identified all 5 attribute groups, 33 attributes (21 custom + 12 OTel), enum values with descriptions, and OTel lineage tracing. Documented in `docs/telemetry/ai-readability-validation.md`. **PRD #19 is now 100% complete.**
