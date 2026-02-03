@@ -111,7 +111,6 @@ Attributes describing git commit data collected by commit-story
 | Attribute | Type | Description | Examples | Stability |
 |---|---|---|---|---|
 | <a id="commit-story-commit-author" href="#commit-story-commit-author">`commit_story.commit.author`</a> | string | The commit author name | `Whitney Lee` | ![Development](https://img.shields.io/badge/-development-blue) |
-| <a id="commit-story-commit-author-email" href="#commit-story-commit-author-email">`commit_story.commit.author_email`</a> | string | The commit author email | `whitney@example.com` | ![Development](https://img.shields.io/badge/-development-blue) |
 | <a id="commit-story-commit-files-changed" href="#commit-story-commit-files-changed">`commit_story.commit.files_changed`</a> | int | Number of files changed in the commit | `3`; `12` | ![Development](https://img.shields.io/badge/-development-blue) |
 | <a id="commit-story-commit-message" href="#commit-story-commit-message">`commit_story.commit.message`</a> | string | The first line of the commit message | `feat: add user authentication`; `fix: resolve memory leak in collector` | ![Development](https://img.shields.io/badge/-development-blue) |
 | <a id="commit-story-commit-timestamp" href="#commit-story-commit-timestamp">`commit_story.commit.timestamp`</a> | string | The commit timestamp in ISO 8601 format | `2026-02-03T10:30:00Z` | ![Development](https://img.shields.io/badge/-development-blue) |

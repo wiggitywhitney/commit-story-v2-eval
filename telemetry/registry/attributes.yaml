@@ -33,17 +33,6 @@ groups:
         examples:
           - "Whitney Lee"
 
-      - id: commit_story.commit.author_email
-        type: string
-        stability: development
-        brief: The commit author email
-        note: >
-          This attribute contains PII. Consider hashing (SHA-256) or making collection
-          opt-in to reduce compliance risk. Implementations should respect user consent
-          preferences before collecting raw email addresses.
-        examples:
-          - "whitney@example.com"
-
       - id: commit_story.commit.timestamp
         type: string
         stability: development

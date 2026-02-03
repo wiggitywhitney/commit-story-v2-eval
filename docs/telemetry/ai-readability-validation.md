@@ -20,7 +20,7 @@ Claude successfully identified the registry structure:
 | Component | Discovered | Details |
 |-----------|------------|---------|
 | Attribute Groups | ✅ | 5 groups found |
-| Attribute Names | ✅ | 32 total attributes |
+| Attribute Names | ✅ | 31 total attributes |
 | Attribute Types | ✅ | Primitives and enums |
 | Requirement Levels | ✅ | required vs recommended |
 | Enum Members | ✅ | Full value lists with descriptions |
@@ -32,17 +32,16 @@ Claude successfully identified the registry structure:
 | Group | Display Name | Count | Custom | OTel |
 |-------|--------------|-------|--------|------|
 | `commit_story.ai` | AI Generation | 10 | 1 | 9 |
-| `commit_story.commit` | Commit | 7 | 5 | 2 |
+| `commit_story.commit` | Commit | 6 | 4 | 2 |
 | `commit_story.context` | Context Collection | 5 | 5 | 0 |
 | `commit_story.filter` | Filter | 5 | 5 | 0 |
 | `commit_story.journal` | Journal | 5 | 5 | 0 |
 
-### Custom Attributes (21 total)
+### Custom Attributes (20 total)
 
 ```text
 commit_story.ai.section_type          enum    recommended
 commit_story.commit.author            string  recommended
-commit_story.commit.author_email      string  recommended
 commit_story.commit.files_changed     int     recommended
 commit_story.commit.message           string  recommended
 commit_story.commit.timestamp         string  recommended
