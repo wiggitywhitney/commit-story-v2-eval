@@ -373,6 +373,39 @@ function formatTechnicalDecisionsToMarkdown(result) {
  * @param {object} options - Formatting options
  * @returns {string} Formatted user message
  */
+/**
+ * Format context for summary generation (filters out assistant messages)
+ * V1 approach: Summary is about what THE DEVELOPER did, so we only need user messages
+ */
+function formatContextForSummary(context) {
+  const userOnlyMessages = (context.chat.messages || []).filter((m) => m.type === 'user');
+
+  return `Generate a summary for this development session:
+
+DATA SCHEMA:
+- commit: The git commit that was made (hash, author, message, diff)
+- chat_messages: Developer input during the session (type:"user" messages only)
+  Note: Assistant responses have been filtered out - focus on what THE DEVELOPER did
+
+COMMIT DATA:
+${JSON.stringify(
+  {
+    hash: context.commit.shortHash,
+    author: context.commit.author,
+    message: context.commit.message,
+    diff: context.commit.diff || 'No diff available',
+  },
+  null,
+  2
+)}
+
+DEVELOPER MESSAGES (type:"user" only):
+${JSON.stringify(userOnlyMessages.map((m) => ({ type: m.type, content: m.content })), null, 2)}`;
+}
+
+/**
+ * Format context for dialogue/technical extraction (needs full chat)
+ */
 function formatContextForUser(context, options = {}) {
   const { includeSummary } = options;
 
@@ -387,6 +420,7 @@ ${context.commit.diff || 'No diff available'}
 \`\`\`
 
 ## Development Conversation
+DATA SCHEMA: type:"user" = developer input, type:"assistant" = AI responses
 ${formatChatMessages(context.chat.messages)}`;
 
   if (includeSummary) {
@@ -415,7 +449,7 @@ async function summaryNode(state) {
 
 ${sectionPrompt}`;
 
-    const userContent = formatContextForUser(context);
+    const userContent = formatContextForSummary(context);
 
     const result = await getModel().invoke([
       new SystemMessage(systemContent),
@@ -591,6 +625,7 @@ export {
   dialogueNode,
   formatChatMessages,
   formatContextForUser,
+  formatContextForSummary,
   buildGraph,
   hasFunctionalCode,
   hasSubstantialChat,

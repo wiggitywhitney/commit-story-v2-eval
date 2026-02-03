@@ -43,9 +43,13 @@ Also include important discussions and discoveries, even if they didn't result i
     // Scenario 3: No Code + Chat - look for what was discussed/decided
     step2 = `## Step 2: Find What Was Discussed
 
-In the chat data, type:"user" messages are from the human developer. type:"assistant" messages are from the AI. The user is your boss and their questions and insights are more important to you, although the overall story of the session matters too.
+In the chat data, type:"user" messages are from the human developer. type:"assistant" messages are from the AI.
 
-Look through the chat conversations. What was discussed, planned, or decided? What problems were explored? What alternatives were considered?`;
+CRITICAL: DO NOT copy or echo the AI's responses. The AI's explanations are context, not the work.
+Focus on what THE DEVELOPER did: What did they create, update, document, or decide?
+The commit message tells you what actually changed - use that as your primary source.
+
+Look at the git diff to see what files changed. Describe what the developer accomplished, not what the AI said.`;
   } else {
     // Scenario 2 & 4: No substantial chat - skip
     step2 = `## Step 2: Skip this step.`;
