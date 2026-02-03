@@ -2,25 +2,23 @@
 
 ## Overview
 
-**Problem**: This repository has no CI pipeline. PRs are merged based solely on CodeRabbit review without automated validation for tests, linting, build correctness, or Weaver schema validity.
+**Problem**: This repository has no CI pipeline. PRs are merged based solely on CodeRabbit review without automated validation for tests, linting, or build correctness.
 
-**Solution**: Implement a GitHub Actions workflow that validates PRs before merge, including Weaver schema validation, test execution, linting, and build verification.
+**Solution**: Implement a GitHub Actions workflow that validates PRs before merge, including test execution, linting, and build verification.
 
-**Why This Matters**: As the codebase grows (especially with Phase 3 telemetry instrumentation), automated validation prevents regressions and ensures the Weaver schema stays valid. CI catches issues before they reach main.
+**Why This Matters**: As the codebase grows (especially with Phase 3 telemetry instrumentation), automated validation prevents regressions. CI catches issues before they reach main.
 
 ## Success Criteria
 
 1. GitHub Actions workflow runs on all PRs to main
 2. PRs cannot merge if tests fail
-3. PRs cannot merge if Weaver schema validation fails (when registry files change)
-4. PRs cannot merge if linting fails
-5. Build verification passes before merge
-6. Workflow completes in under 5 minutes for typical PRs
+3. PRs cannot merge if linting fails
+4. Build verification passes before merge
+5. Workflow completes in under 5 minutes for typical PRs
 
 ## Dependencies
 
-- **PRD #19** (Weaver Schema): Must be complete to validate the registry
-- **Weaver CLI**: Must be installable in CI environment
+None - this PRD can be implemented independently.
 
 ## Milestones
 
@@ -68,26 +66,7 @@
 
 ---
 
-### Milestone 4: Weaver Schema Validation
-**Status**: Not Started
-
-**Steps**:
-1. [ ] Add Weaver CLI installation step to workflow
-2. [ ] Add `weaver registry check` step (conditional on registry file changes)
-3. [ ] Add `weaver registry generate` step to verify docs are fresh
-   - Run generation to temp directory
-   - Diff against committed `docs/telemetry/`
-   - Fail if differences exist (forces developers to regenerate locally)
-4. [ ] Configure path filter to only run on `telemetry/registry/**` changes
-5. [ ] Ensure schema validation failures block PR merge
-
-**Deliverable**: Weaver schema validated and docs freshness verified on PRs that modify registry
-
-**Done when**: Invalid schema changes OR stale documentation prevent PR merge
-
----
-
-### Milestone 5: Branch Protection Rules
+### Milestone 4: Branch Protection Rules
 **Status**: Not Started
 
 **Steps**:
@@ -108,33 +87,9 @@
 - **Release management**: No automated versioning or publishing
 - **Complex matrix testing**: Single Node.js version is sufficient for now
 - **Performance benchmarks**: Not needed at this stage
+- **Weaver schema validation**: Telemetry validation belongs in the Telemetry Agent (Phase 3), which needs to validate its own instrumentation against the schema anyway
 
 ## Technical Notes
-
-### Weaver Installation in CI
-
-Weaver can be installed via the shell installer:
-```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/open-telemetry/weaver/releases/download/v0.21.2/weaver-installer.sh | sh
-```
-
-Or cached between runs using GitHub Actions cache.
-
-### Conditional Schema Validation
-
-Use path filters to only run Weaver validation when registry files change:
-```yaml
-- uses: step-security/paths-filter@v3
-  id: changes
-  with:
-    filters: |
-      registry:
-        - 'telemetry/registry/**'
-
-- name: Validate Weaver Schema
-  if: steps.changes.outputs.registry == 'true'
-  run: weaver registry check -r ./telemetry/registry
-```
 
 ### Workflow File Location
 
@@ -144,11 +99,28 @@ Use path filters to only run Weaver validation when registry files change:
 
 1. Should we add code coverage reporting?
    - **Tentative answer**: Not for initial implementation, can add later
-2. Should we cache Weaver installation between runs?
-   - **Tentative answer**: Yes, for faster CI runs
-3. What Node.js version(s) should we test against?
+2. What Node.js version(s) should we test against?
    - **Tentative answer**: Single version matching local development (v20 LTS)
+
+## Decision Log
+
+### 2026-02-03: Scope Reduction - Remove Weaver Validation
+**Decision**: Remove Milestone 4 (Weaver Schema Validation) from CI/CD scope.
+
+**Rationale**:
+- Telemetry validation belongs in the Telemetry Agent (Phase 3), not CI/CD
+- The agent needs to validate its own instrumentation anyway ("Is my instrumentation conformant to the schema?")
+- This is more interesting for the KubeCon talk than automated CI checks
+- CI/CD should focus on core value: tests, linting, build verification
+- Time is limited before KubeCon EU (March 23, 2026) - prioritize the agent over infrastructure
+
+**Impact**:
+- Removed Milestone 4 (Weaver Schema Validation)
+- Removed dependency on PRD #19
+- Removed Weaver installation technical notes
+- Simplified scope to 4 milestones instead of 5
 
 ## Progress Log
 
 - **2026-02-03**: PRD created
+- **2026-02-03**: Scope reduced - removed Weaver validation milestone per design decision (validation belongs in Telemetry Agent)
