@@ -109,6 +109,29 @@ This project will be distributed as an npm package. Avoid bloat:
 - **Node.js** with ES modules
 - **No telemetry** - this will be added by an instrumentation agent later
 
+## OpenTelemetry Weaver CLI
+
+Weaver is installed for Phase 2 (schema definition). The binary is at `~/.cargo/bin/weaver`.
+
+**Usage:**
+```bash
+# Validate registry
+~/.cargo/bin/weaver registry check -r ./telemetry/registry
+
+# Resolve and view (YAML)
+~/.cargo/bin/weaver registry resolve -r ./telemetry/registry
+
+# Resolve to JSON file
+~/.cargo/bin/weaver registry resolve -r ./telemetry/registry -f json -o resolved.json
+```
+
+**Installation (if needed):**
+```bash
+cargo install weaver
+```
+
+See `docs/research/weaver-schema-research.md` for full Weaver documentation.
+
 ## Secrets Management (vals)
 
 This project uses [vals](https://github.com/helmfile/vals) for secrets management, pulling from GCP Secrets Manager.

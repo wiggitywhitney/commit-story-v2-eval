@@ -31,3 +31,6 @@ journal/
 *.pem
 *.key
 .vals.yaml
+
+# Weaver generated output
+telemetry/registry/resolved.json

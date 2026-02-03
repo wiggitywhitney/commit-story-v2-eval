@@ -24,84 +24,121 @@
 ## Milestones
 
 ### Milestone 1: Research - Weaver Deep Dive
-**Status**: Not Started
+**Status**: ✅ Complete
 
 Research OpenTelemetry Weaver in depth to understand:
-- Registry structure and YAML format
-- How to define custom attribute groups
-- How to import official OTel conventions as dependencies
-- How `weaver registry resolve` outputs machine-readable data
-- What an AI agent needs to parse from the resolved registry
+- [x] Registry structure and YAML format
+- [x] How to define custom attribute groups
+- [x] How to import official OTel conventions as dependencies
+- [x] How `weaver registry resolve` outputs machine-readable data
+- [x] What an AI agent needs to parse from the resolved registry
 
 **Deliverable**: `docs/research/weaver-schema-research.md` with:
-- Weaver registry YAML structure (annotated examples)
-- Custom registry setup with OTel dependencies
-- Resolved registry output format (what the AI will read)
-- Recommended schema structure for commit-story
+- [x] Weaver registry YAML structure (annotated examples)
+- [x] Custom registry setup with OTel dependencies
+- [x] Resolved registry output format (what the AI will read)
+- [x] Recommended schema structure for commit-story
 
 **Done when**: Research document exists and answers all questions above
 
 ---
 
-### Milestone 2: Define commit_story.* Attribute Registry
-**Status**: Not Started
+### Milestone 2: Import OTel Semantic Conventions
+**Status**: ✅ Complete
 
-**Prerequisites**: Read `docs/research/weaver-schema-research.md` before starting
+**Rationale**: Import standard conventions FIRST to understand what's already covered before defining custom attributes.
 
-Create the Weaver registry defining commit-story's custom attributes. Based on v1's standards.js, this includes:
-- `commit_story.commit.*` - Git commit attributes
-- `commit_story.context.*` - Context collection attributes
-- `commit_story.journal.*` - Journal generation attributes
-- `commit_story.filter.*` - Filtering operation attributes
+**Steps**:
+1. [x] Review `docs/research/weaver-schema-research.md` - understand OTel dependency configuration and semconv imports
+2. [x] Create `telemetry/registry/` directory structure with `registry_manifest.yaml`
+3. [x] Configure registry to import official OTel semantic conventions (v1.37.0)
+4. [x] Import GenAI conventions (gen_ai.*) - needed for AI generation spans
+5. [x] Check for VCS/git conventions that might already exist
+6. [x] Check for any other relevant conventions (rpc.* for MCP operations)
+7. [x] Run `weaver registry resolve` to see what's available
+8. [x] Document which semconvs commit-story will use vs what gaps need custom attributes
 
-**Deliverable**: `telemetry/registry/` directory with Weaver YAML files
+**Deliverable**: Registry with OTel dependencies configured, documented list of semconvs to use
 
-**Done when**: `weaver registry check` passes on the custom registry
+**Done when**: `weaver registry resolve` outputs OTel conventions and gaps are identified
+
+**Findings**:
+- **GenAI (`gen_ai.*`)**: Full coverage for AI operations - request.model, operation.name, usage tokens, provider.name (includes `anthropic`)
+- **VCS (`vcs.*`)**: Covers branch/revision only (`vcs.ref.head.name`, `vcs.ref.head.revision`) - does NOT cover commit message, author, timestamp, files changed
+- **RPC (`rpc.*`)**: Available but MCP not in `rpc.system` enum (too new)
 
 ---
 
-### Milestone 3: Import OTel GenAI Conventions
-**Status**: Not Started
+### Milestone 3: Define commit_story.* Custom Attributes
+**Status**: ✅ Complete
 
-**Prerequisites**: Read `docs/research/weaver-schema-research.md` before starting
+**Rationale**: Only define custom attributes for gaps NOT covered by OTel semantic conventions.
 
-Configure the registry to import official OpenTelemetry semantic conventions:
-- GenAI conventions (gen_ai.*)
-- Any other relevant conventions (rpc.* for MCP operations)
+**Steps**:
+1. [x] Review `docs/research/weaver-schema-research.md` - understand registry structure and YAML format
+2. [x] Review Milestone 2 output - what semconvs are available vs what's missing
+3. [x] Define custom attribute groups ONLY for app-specific concepts:
+   - `commit_story.commit.*` - message, author, author_email, timestamp, files_changed (VCS doesn't cover these)
+   - `commit_story.context.*` - sessions_count, messages_count, time_window_start/end, source
+   - `commit_story.journal.*` - entry_date, file_path, sections, quotes_count, word_count
+   - `commit_story.filter.*` - type (enum), messages_before/after, tokens_before/after
+   - `commit_story.ai.*` - section_type (extends gen_ai with journal-specific operations)
+4. [x] Create attribute group definitions that reference both OTel and custom attributes
+5. [x] Run `weaver registry check` to validate - passes with no errors
 
-**Deliverable**: Updated registry configuration with OTel dependencies
+**Deliverable**: `telemetry/registry/attributes.yaml` with custom attributes
 
-**Done when**: `weaver registry resolve` includes both custom and official conventions
+**Done when**: `weaver registry check` passes, registry uses semconvs where available
 
 ---
 
 ### Milestone 4: Generate Documentation from Schema
-**Status**: Not Started
+**Status**: ✅ Complete
+
+**Steps**:
+1. [x] Review `docs/research/weaver-schema-research.md` - understand Weaver's documentation generation capabilities and template options
+2. [x] Configure Weaver templates for markdown output
+3. [x] Run `weaver registry generate` with markdown templates
+4. [x] Review generated documentation for completeness
+5. [x] Place output at `docs/telemetry/` (directory structure per OTel convention)
 
 **Prerequisites**: Milestones 2 and 3 complete
 
-Use Weaver to generate markdown documentation from the schema. This validates the schema is complete and well-formed.
-
-**Deliverable**: `docs/telemetry-conventions.md` generated by Weaver
+**Deliverable**: `docs/telemetry/` directory with auto-generated Weaver documentation
 
 **Done when**: Generated docs accurately describe all attributes
+
+**Implementation Notes**:
+- Uses official OTel semantic conventions templates from v1.37.0
+- Generates directory structure matching OTel's own documentation format
+- Includes attribute tables, enum values, stability badges, and detailed footnotes
+- Regeneration command documented in `docs/telemetry/README.md`
 
 ---
 
 ### Milestone 5: Validate AI Readability
-**Status**: Not Started
+**Status**: ✅ Complete
+
+**Steps**:
+1. [x] Review `docs/research/weaver-schema-research.md` - understand resolved registry output format and what AI needs to parse
+2. [x] Run `weaver registry resolve --registry ./telemetry/registry`
+3. [x] Capture the output (YAML/JSON)
+4. [x] Have Claude parse it and describe the available conventions
+5. [x] Verify Claude can identify attribute names, types, requirements, and descriptions
+6. [x] Document the test results
 
 **Prerequisites**: Milestone 4 complete
-
-Test that an AI agent can parse the resolved registry:
-1. Run `weaver registry resolve --registry ./telemetry/registry`
-2. Capture the output (YAML/JSON)
-3. Have Claude parse it and describe the available conventions
-4. Verify Claude can identify attribute names, types, requirements, and descriptions
 
 **Deliverable**: Documented test showing AI can read and interpret the schema
 
 **Done when**: AI successfully parses schema and can describe conventions accurately
+
+**Implementation Notes**:
+- Claude (claude-opus-4-5-20251101) successfully parsed the resolved registry YAML
+- Identified all 5 attribute groups (33 total attributes: 21 custom, 12 OTel)
+- Extracted enum values with descriptions for all enum types
+- Traced OTel lineage showing inheritance from standard conventions
+- Validation documented in `docs/telemetry/ai-readability-validation.md`
 
 ---
 
@@ -127,9 +164,16 @@ This PRD delivers:
 ## Open Questions
 
 1. Should the registry live in `telemetry/registry/` or a different location?
+   - **Answer**: `telemetry/registry/` - keeps schema close to code it describes
 2. What version of OTel semantic conventions should we pin to?
+   - **Answer**: v1.37.0 - aligns with existing research and Datadog LLM Observability
 3. Should we create a separate repo for the schema (for true cross-codebase use) or keep it in commit-story-v2?
+   - **Answer**: Keep in commit-story-v2 for now; can extract later if needed
 
 ## Progress Log
 
-_No progress yet - PRD just created_
+- **2026-02-03**: Milestone 1 complete - Created `docs/research/weaver-schema-research.md` with comprehensive Weaver deep-dive covering registry structure, custom attributes, OTel dependencies, resolved output format, and recommended schema for commit-story
+- **2026-02-03**: Swapped Milestones 2 and 3 - Import OTel semconvs FIRST, then define custom attributes only for gaps. This ensures we use standard conventions wherever possible.
+- **2026-02-03**: Milestones 2 & 3 complete - Created `telemetry/registry/` with `registry_manifest.yaml` (OTel v1.37.0 dependency) and `attributes.yaml` (5 attribute groups). Validated GenAI, VCS, RPC convention imports. Registry passes `weaver registry check`. Documented Weaver CLI in `.claude/CLAUDE.md`.
+- **2026-02-03**: Milestone 4 complete - Generated documentation using `weaver registry generate` with OTel v1.37.0 markdown templates. Output in `docs/telemetry/` directory structure. Covers all 5 attribute groups (32 total attributes), includes enum values, stability badges, and OTel attribute footnotes.
+- **2026-02-03**: Milestone 5 complete - Validated AI readability by having Claude parse `weaver registry resolve` output. Successfully identified all 5 attribute groups, 33 attributes (21 custom + 12 OTel), enum values with descriptions, and OTel lineage tracing. Documented in `docs/telemetry/ai-readability-validation.md`. **PRD #19 is now 100% complete.**
