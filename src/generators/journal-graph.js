@@ -540,32 +540,42 @@ ${structuredPrompt}`;
 
 /**
  * Try to recover double-encoded structured output from a parsing error
- * The error message contains the raw text that failed to parse
- * @param {Error} error - The parsing error
+ * LangChain's OutputParserException provides the raw output via llmOutput property
+ * @param {Error} error - The parsing error (OutputParserException)
  * @param {string} arrayField - The field that should be an array
  * @returns {object|null} Recovered result or null if recovery failed
  */
 function tryRecoverFromParsingError(error, arrayField) {
-  const errorMsg = error.message || '';
-  // Extract the raw text from error message: 'Failed to parse. Text: "..."'
-  const textMatch = errorMsg.match(/Text: "(.+)"/s);
-  if (!textMatch) return null;
+  // Use llmOutput property from OutputParserException (more reliable than regex)
+  let rawText = error.llmOutput;
+
+  // Fallback to regex extraction if llmOutput not available
+  if (!rawText) {
+    const textMatch = error.message?.match(/Text: "([\s\S]+?)"\. Error:/);
+    rawText = textMatch?.[1];
+  }
+
+  if (!rawText) return null;
 
   try {
-    // The text is escaped in the error message, need to unescape it
-    let rawText = textMatch[1];
-    // Remove trailing ". Error: ..." if present
-    const errorIdx = rawText.lastIndexOf('". Error:');
-    if (errorIdx > 0) {
-      rawText = rawText.substring(0, errorIdx);
-    }
-
     // Parse the outer JSON
     const parsed = JSON.parse(rawText);
 
-    // If the array field is a string, parse it
+    // If the array field is a string, parse it (double-encoded case)
     if (typeof parsed[arrayField] === 'string') {
-      parsed[arrayField] = JSON.parse(parsed[arrayField]);
+      let arrayStr = parsed[arrayField];
+
+      // Clean up any XML-style tags the model may have appended (e.g., </invoke>)
+      arrayStr = arrayStr.replace(/<\/?\w+>/g, '').trim();
+
+      // Try to find valid JSON array boundaries
+      const startIdx = arrayStr.indexOf('[');
+      const endIdx = arrayStr.lastIndexOf(']');
+      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+        arrayStr = arrayStr.substring(startIdx, endIdx + 1);
+      }
+
+      parsed[arrayField] = JSON.parse(arrayStr);
     }
 
     return parsed;
