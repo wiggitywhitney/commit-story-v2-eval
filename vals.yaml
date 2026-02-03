@@ -1,0 +1,1 @@
+ANTHROPIC_API_KEY: ref+gcpsecrets://demoo-ooclock/anthropic-api-key

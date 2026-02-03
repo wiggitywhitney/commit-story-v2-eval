@@ -60,7 +60,7 @@ None - this is a standalone fix to the existing prompt system.
 ## Milestones
 
 ### Milestone 1: Restore Guidelines to All Nodes
-**Status**: Not Started
+**Status**: Complete ✅
 
 Update `src/generators/journal-graph.js` to apply guidelines to technicalNode and dialogueNode, not just summaryNode.
 
@@ -74,7 +74,7 @@ Update `src/generators/journal-graph.js` to apply guidelines to technicalNode an
 ---
 
 ### Milestone 2: Restructure Dialogue Prompt
-**Status**: Not Started
+**Status**: Complete ✅
 
 Update `src/generators/prompts/sections/dialogue-prompt.js` with v1-style architecture.
 
@@ -90,7 +90,7 @@ Update `src/generators/prompts/sections/dialogue-prompt.js` with v1-style archit
 ---
 
 ### Milestone 3: Restructure Technical Decisions Prompt
-**Status**: Not Started
+**Status**: Complete ✅
 
 Update `src/generators/prompts/sections/technical-decisions-prompt.js` with v1-style architecture.
 
@@ -106,7 +106,7 @@ Update `src/generators/prompts/sections/technical-decisions-prompt.js` with v1-s
 ---
 
 ### Milestone 4: Strengthen Guidelines
-**Status**: Not Started
+**Status**: Complete ✅
 
 Update guidelines files to be more explicit about preventing AI process talk.
 
@@ -125,7 +125,7 @@ Update guidelines files to be more explicit about preventing AI process talk.
 ---
 
 ### Milestone 5: Add Schema Verification Functions
-**Status**: Not Started
+**Status**: Complete ✅
 
 Add code-based verification in `src/generators/journal-graph.js` to validate AI output against source data.
 
@@ -185,4 +185,10 @@ Verify the fix works by testing with real commits in cluster-whisperer.
 
 ## Progress Log
 
-_No progress yet - PRD just created_
+**2026-02-03**: Milestones 1-5 complete
+- Verified guidelines already applied to all nodes (M1)
+- Verified dialogue prompt already has step-based architecture (M2)
+- Added "Code Archivist" role to technical decisions prompt (M3)
+- Strengthened anti-hallucination guidelines with type:"assistant" rules (M4)
+- Added Zod schemas, verification functions, and structured output (M5)
+- Remaining: Milestone 6 (test in cluster-whisperer)
