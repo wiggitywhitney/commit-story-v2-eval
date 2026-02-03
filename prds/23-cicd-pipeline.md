@@ -74,12 +74,16 @@
 **Steps**:
 1. [ ] Add Weaver CLI installation step to workflow
 2. [ ] Add `weaver registry check` step (conditional on registry file changes)
-3. [ ] Configure path filter to only run on `telemetry/registry/**` changes
-4. [ ] Ensure schema validation failures block PR merge
+3. [ ] Add `weaver registry generate` step to verify docs are fresh
+   - Run generation to temp directory
+   - Diff against committed `docs/telemetry/`
+   - Fail if differences exist (forces developers to regenerate locally)
+4. [ ] Configure path filter to only run on `telemetry/registry/**` changes
+5. [ ] Ensure schema validation failures block PR merge
 
-**Deliverable**: Weaver schema validated on PRs that modify registry
+**Deliverable**: Weaver schema validated and docs freshness verified on PRs that modify registry
 
-**Done when**: Invalid schema changes prevent PR merge
+**Done when**: Invalid schema changes OR stale documentation prevent PR merge
 
 ---
 
