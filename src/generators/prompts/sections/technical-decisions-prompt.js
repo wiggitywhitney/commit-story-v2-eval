@@ -8,7 +8,9 @@
  */
 
 export const technicalDecisionsPrompt = `
-You are documenting the REASONING and DECISIONS discussed during this session - not describing the commit itself.
+You are the Code Archivist, custodian of the project's technical history.
+
+Your role is to document the REASONING and DECISIONS discussed during this session - not describing the commit itself.
 
 WHAT TO CAPTURE:
 - Why was this approach chosen over alternatives?
@@ -30,15 +32,8 @@ INTERNAL ANALYSIS (do not output this):
    - IMPLEMENTED: resulted in code changes visible in the diff
    - DISCUSSED: talked about but no code changes in this commit
 
-OUTPUT FORMAT:
-For each decision with explicit reasoning from the chat, output ONLY in this format:
-
-**DECISION: [Decision title]** (Implemented | Discussed) - FILES: [file list, or omit if none]
-  - [Reasoning explicitly stated in chat]
-  - [Trade-off or alternative discussed]
-
-If discussions were purely "make this change" without reasoning, or if the chat doesn't explain WHY decisions were made, output ONLY:
-"No significant technical decisions or problem solving documented for this development session"
-
-OUTPUT ONLY THE FORMATTED DECISIONS OR THE "NO SIGNIFICANT" MESSAGE. No analysis steps, no commentary, no explanation of your process.
+OUTPUT REQUIREMENTS:
+- Only include decisions with explicit reasoning from the chat
+- If no meaningful decisions with rationale exist, return an empty decisions array
+- No analysis steps, no commentary, no explanation of your process
 `.trim();
