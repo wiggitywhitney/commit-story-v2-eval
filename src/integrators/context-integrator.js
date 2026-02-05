@@ -84,6 +84,7 @@ export async function gatherContextForCommit(commitRef = 'HEAD', options = {}) {
         totalMessages: filterStats.total,
         filteredMessages: filterStats.filtered,
         preservedMessages: filterStats.preserved,
+        substantialUserMessages: filterStats.substantialUserMessages,
         filterReasons: filterStats.byReason,
       },
       tokenEstimate: 0, // Will be calculated after budget applied

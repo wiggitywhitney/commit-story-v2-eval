@@ -227,41 +227,6 @@ INSTRUCTION: Mark a decision as "Implemented" ONLY if it directly relates to cha
 }
 
 /**
- * Determine if chat messages contain substantial discussion
- * (not just simple commands or acknowledgments)
- * @param {object[]} messages - Chat messages
- * @returns {boolean} Whether there's substantial discussion
- */
-function hasSubstantialChat(messages) {
-  if (!messages || messages.length === 0) return false;
-
-  // Count user messages with meaningful content
-  const substantialMessages = messages.filter((msg) => {
-    if (msg.type !== 'user') return false;
-
-    const content = (msg.content || '').trim();
-    // Skip very short messages (likely commands or acknowledgments)
-    if (content.length < 50) return false;
-
-    // Skip simple command patterns
-    const simplePatterns = [
-      /^(yes|no|ok|okay|sure|thanks|thank you|got it|done|proceed|continue)\.?$/i,
-      /^(y|n)$/i,
-      /^\/\w+/, // slash commands
-    ];
-
-    for (const pattern of simplePatterns) {
-      if (pattern.test(content)) return false;
-    }
-
-    return true;
-  });
-
-  // Consider substantial if there are at least 2 meaningful user messages
-  return substantialMessages.length >= 2;
-}
-
-/**
  * Format chat messages for prompt inclusion
  * Uses JSON format for clear type identification
  * @param {object[]} messages - Filtered chat messages
@@ -512,7 +477,8 @@ async function summaryNode(state) {
     const { context } = state;
     const guidelines = getAllGuidelines();
     const hasFunctional = hasFunctionalCode(context.commit.diff);
-    const hasChat = hasSubstantialChat(context.chat.messages);
+    // Use pre-computed stats from message filter instead of re-iterating
+    const hasChat = (context.metadata?.filterStats?.substantialUserMessages ?? 0) >= 2;
     const sectionPrompt = summaryPrompt(hasFunctional, hasChat);
 
     const systemContent = `${guidelines}
@@ -764,7 +730,6 @@ export {
   formatContextForSummary,
   buildGraph,
   hasFunctionalCode,
-  hasSubstantialChat,
   analyzeCommitContent,
   generateImplementationGuidance,
   verifyDialogueQuotes,

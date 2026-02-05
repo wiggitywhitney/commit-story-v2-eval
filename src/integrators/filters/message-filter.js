@@ -20,6 +20,37 @@ function isTooShortMessage(content) {
 }
 
 /**
+ * Detect if a user message is "substantial" - meaningful for dialogue/decision extraction
+ *
+ * Substantial messages are long enough and contain actual discussion, not just
+ * simple commands, acknowledgments, or slash commands.
+ *
+ * @param {string} content - Text content of the message
+ * @returns {boolean} True if this is a substantial message
+ */
+function isSubstantialMessage(content) {
+  if (!content) return false;
+
+  const trimmed = content.trim();
+
+  // Must be at least 50 characters
+  if (trimmed.length < 50) return false;
+
+  // Skip simple command/acknowledgment patterns
+  const simplePatterns = [
+    /^(yes|no|ok|okay|sure|thanks|thank you|got it|done|proceed|continue)\.?$/i,
+    /^(y|n)$/i,
+    /^\/\w+/, // slash commands
+  ];
+
+  for (const pattern of simplePatterns) {
+    if (pattern.test(trimmed)) return false;
+  }
+
+  return true;
+}
+
+/**
  * Detect if a message is system noise (bash output, commands, system tags)
  *
  * These are automatically generated messages from Claude Code that contain
@@ -178,6 +209,9 @@ export function filterMessages(messages) {
     total: messages.length,
     filtered: 0,
     preserved: 0,
+    // Tracks user messages with meaningful content (50+ chars, not simple commands)
+    // Used downstream to determine if there's enough discussion for dialogue/decision extraction
+    substantialUserMessages: 0,
     byReason: {
       noType: 0,
       wrongType: 0,
@@ -242,6 +276,12 @@ export function filterMessages(messages) {
       }
 
       stats.preserved++;
+
+      // Track substantial user messages for downstream quality checks
+      if (message.type === 'user' && isSubstantialMessage(textContent)) {
+        stats.substantialUserMessages++;
+      }
+
       filtered.push({
         uuid: message.uuid,
         sessionId: message.sessionId,
