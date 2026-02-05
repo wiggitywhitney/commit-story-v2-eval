@@ -130,54 +130,100 @@ function fixDoubleEncodedOutput(result, arrayField) {
 }
 
 /**
- * Analyze diff to determine if it contains functional code changes
- * (not just documentation or config files)
+ * Analyze commit diff to categorize changed files
+ * Returns lists of documentation files vs functional code files
+ * @param {string} diff - Git diff content
+ * @returns {object} Analysis result with file categorizations
+ */
+function analyzeCommitContent(diff) {
+  if (!diff) {
+    return {
+      changedFiles: [],
+      docFiles: [],
+      functionalFiles: [],
+      hasFunctionalCode: false,
+      hasOnlyDocs: false,
+    };
+  }
+
+  // Extract file paths from diff headers (e.g., "+++ b/src/index.js")
+  const fileHeaderPattern = /^[+-]{3} [ab]\/(.+)$/gm;
+  const matches = [...diff.matchAll(fileHeaderPattern)];
+  const allFiles = [...new Set(matches.map((m) => m[1]))];
+
+  // Filter out journal entries (prevent recursive pollution)
+  const changedFiles = allFiles.filter((f) => !f.startsWith('journal/entries/'));
+
+  // Documentation file patterns
+  const isDocFile = (file) => {
+    const docPatterns = [
+      /\.md$/i,
+      /\.txt$/i,
+      /README/i,
+      /CHANGELOG/i,
+      /LICENSE/i,
+      /\.ya?ml$/i,
+      /\.json$/i,
+      /\.toml$/i,
+      /\.ini$/i,
+      /\.env/i,
+      /\.gitignore$/i,
+    ];
+    return docPatterns.some((pattern) => pattern.test(file));
+  };
+
+  const docFiles = changedFiles.filter(isDocFile);
+  const functionalFiles = changedFiles.filter((f) => !isDocFile(f));
+
+  return {
+    changedFiles,
+    docFiles,
+    functionalFiles,
+    hasFunctionalCode: functionalFiles.length > 0,
+    hasOnlyDocs: docFiles.length > 0 && functionalFiles.length === 0,
+  };
+}
+
+/**
+ * Legacy wrapper for hasFunctionalCode checks
  * @param {string} diff - Git diff content
  * @returns {boolean} Whether the diff contains functional code changes
  */
 function hasFunctionalCode(diff) {
-  if (!diff) return false;
+  return analyzeCommitContent(diff).hasFunctionalCode;
+}
 
-  // Documentation and config file patterns
-  const docPatterns = [
-    /^[+-]{3} [ab]\/.*\.md$/gm,
-    /^[+-]{3} [ab]\/.*\.txt$/gm,
-    /^[+-]{3} [ab]\/.*\.json$/gm,
-    /^[+-]{3} [ab]\/.*\.ya?ml$/gm,
-    /^[+-]{3} [ab]\/.*\.toml$/gm,
-    /^[+-]{3} [ab]\/.*\.ini$/gm,
-    /^[+-]{3} [ab]\/.*\.env.*$/gm,
-    /^[+-]{3} [ab]\/.*\.gitignore$/gm,
-    /^[+-]{3} [ab]\/.*LICENSE.*$/gm,
-    /^[+-]{3} [ab]\/.*README.*$/gm,
-    /^[+-]{3} [ab]\/.*CHANGELOG.*$/gm,
-  ];
+/**
+ * Generate dynamic implementation guidance based on diff analysis
+ * Tells the AI exactly which files changed and how to classify decisions
+ * @param {object} analysis - Result from analyzeCommitContent
+ * @returns {string} Implementation guidance to append to prompt
+ */
+function generateImplementationGuidance(analysis) {
+  const { functionalFiles, docFiles, hasOnlyDocs } = analysis;
 
-  // Code file patterns
-  const codePatterns = [
-    /^[+-]{3} [ab]\/.*\.js$/gm,
-    /^[+-]{3} [ab]\/.*\.ts$/gm,
-    /^[+-]{3} [ab]\/.*\.jsx$/gm,
-    /^[+-]{3} [ab]\/.*\.tsx$/gm,
-    /^[+-]{3} [ab]\/.*\.py$/gm,
-    /^[+-]{3} [ab]\/.*\.rb$/gm,
-    /^[+-]{3} [ab]\/.*\.go$/gm,
-    /^[+-]{3} [ab]\/.*\.rs$/gm,
-    /^[+-]{3} [ab]\/.*\.java$/gm,
-    /^[+-]{3} [ab]\/.*\.c$/gm,
-    /^[+-]{3} [ab]\/.*\.cpp$/gm,
-    /^[+-]{3} [ab]\/.*\.h$/gm,
-    /^[+-]{3} [ab]\/.*\.sh$/gm,
-  ];
-
-  // Check if any code files are in the diff
-  for (const pattern of codePatterns) {
-    if (pattern.test(diff)) {
-      return true;
-    }
+  if (hasOnlyDocs) {
+    return `
+IMPLEMENTATION GUIDANCE:
+This commit contains ONLY documentation changes: ${docFiles.join(', ')}
+- All decisions should be marked as "Discussed" since no functional code was changed
+- Focus on the reasoning behind documentation updates`;
   }
 
-  return false;
+  if (functionalFiles.length > 0) {
+    return `
+IMPLEMENTATION GUIDANCE:
+Changed functional files: ${functionalFiles.join(', ')}
+${docFiles.length > 0 ? `Changed documentation files: ${docFiles.join(', ')}` : ''}
+
+IMPLEMENTED vs DISCUSSED classification:
+- "Implemented" = Decision resulted in changes to: ${functionalFiles.join(', ')}
+- "Discussed" = Decision was talked about but no related code changes in this commit
+
+INSTRUCTION: Mark a decision as "Implemented" ONLY if it directly relates to changes in: ${functionalFiles.join(', ')}`;
+  }
+
+  return '';
 }
 
 /**
@@ -499,8 +545,13 @@ async function technicalNode(state) {
     const { context } = state;
     const guidelines = getAllGuidelines();
 
+    // Analyze diff to generate dynamic implementation guidance
+    const diffAnalysis = analyzeCommitContent(context.commit.diff);
+    const implementationGuidance = generateImplementationGuidance(diffAnalysis);
+
     // Modify prompt for structured output
     const structuredPrompt = `${technicalDecisionsPrompt}
+${implementationGuidance}
 
 Return your analysis as a JSON object with a "decisions" array. Each decision should have:
 - title: Brief title of the decision
@@ -714,6 +765,8 @@ export {
   buildGraph,
   hasFunctionalCode,
   hasSubstantialChat,
+  analyzeCommitContent,
+  generateImplementationGuidance,
   verifyDialogueQuotes,
   verifyTechnicalDecisions,
   formatDialogueToMarkdown,
