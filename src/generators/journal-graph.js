@@ -329,6 +329,69 @@ ${userContent}`;
 }
 
 /**
+ * Post-processing: strip preamble and commentary from dialogue output
+ * Keeps only lines starting with > (blockquotes) and blank lines between them
+ * Falls back to original if no quotes found
+ */
+function cleanDialogueOutput(raw) {
+  if (!raw || raw.includes('No significant dialogue')) return raw;
+
+  const lines = raw.split('\n');
+  const cleaned = [];
+  let inQuoteBlock = false;
+
+  for (const line of lines) {
+    if (line.startsWith('> ')) {
+      inQuoteBlock = true;
+      cleaned.push(line);
+    } else if (inQuoteBlock && line.trim() === '') {
+      // Blank line between quote blocks
+      cleaned.push('');
+      inQuoteBlock = false;
+    } else if (inQuoteBlock) {
+      // Continuation of a blockquote that doesn't start with >
+      // (shouldn't happen with our format, skip it)
+      inQuoteBlock = false;
+    }
+    // Skip all other lines (preamble, commentary)
+  }
+
+  const result = cleaned.join('\n').trim();
+  return result || raw; // Fallback to original if cleaning removed everything
+}
+
+/**
+ * Post-processing: strip preamble from technical decisions output
+ * Keeps only lines starting with **DECISION: and their sub-items
+ */
+function cleanTechnicalOutput(raw) {
+  if (!raw || raw.includes('No significant technical decisions')) return raw;
+
+  const lines = raw.split('\n');
+  const cleaned = [];
+  let inDecision = false;
+
+  for (const line of lines) {
+    if (line.startsWith('**DECISION:') || line.startsWith('- **DECISION:')) {
+      inDecision = true;
+      cleaned.push(line);
+    } else if (inDecision && (line.startsWith('  -') || line.startsWith('  Tradeoffs:'))) {
+      // Sub-items of a decision
+      cleaned.push(line);
+    } else if (inDecision && line.trim() === '') {
+      // Blank line between decisions
+      cleaned.push('');
+      inDecision = false;
+    } else {
+      inDecision = false;
+    }
+  }
+
+  const result = cleaned.join('\n').trim();
+  return result || raw; // Fallback to original if cleaning removed everything
+}
+
+/**
  * Summary generation node
  * Creates a narrative overview of the commit
  */
@@ -395,7 +458,7 @@ ${implementationGuidance}`;
       new HumanMessage(userContent),
     ]);
 
-    return { technicalDecisions: result.content.trim() };
+    return { technicalDecisions: cleanTechnicalOutput(result.content.trim()) };
   } catch (error) {
     return {
       technicalDecisions: '[Technical decisions extraction failed]',
@@ -443,7 +506,7 @@ ${sectionPrompt}`;
       new HumanMessage(userContent),
     ]);
 
-    return { dialogue: result.content.trim() };
+    return { dialogue: cleanDialogueOutput(result.content.trim()) };
   } catch (error) {
     return {
       dialogue: '[Dialogue extraction failed]',
