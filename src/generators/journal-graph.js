@@ -375,8 +375,8 @@ function cleanTechnicalOutput(raw) {
     if (line.startsWith('**DECISION:') || line.startsWith('- **DECISION:')) {
       inDecision = true;
       cleaned.push(line);
-    } else if (inDecision && (line.startsWith('  -') || line.startsWith('  Tradeoffs:'))) {
-      // Sub-items of a decision
+    } else if (inDecision && (line.match(/^\s+-/) || line.match(/^\s+Tradeoffs:/))) {
+      // Sub-items of a decision (with any indentation)
       cleaned.push(line);
     } else if (inDecision && line.trim() === '') {
       // Blank line between decisions
@@ -389,6 +389,38 @@ function cleanTechnicalOutput(raw) {
 
   const result = cleaned.join('\n').trim();
   return result || raw; // Fallback to original if cleaning removed everything
+}
+
+/**
+ * Post-processing: replace banned formal words in summary output
+ * These words persist despite prompt instructions, so we handle them deterministically
+ */
+const BANNED_WORD_REPLACEMENTS = [
+  [/\bcomprehensive\b/gi, 'detailed'],
+  [/\brobust\b/gi, 'solid'],
+  [/\bsignificant\b/gi, 'notable'],
+  [/\bsystematic(ally)?\b/gi, (_, suffix) => suffix ? 'carefully' : 'structured'],
+  [/\bmeticulous(ly)?\b/gi, (_, suffix) => suffix ? 'carefully' : 'careful'],
+  [/\bmethodical(ly)?\b/gi, (_, suffix) => suffix ? 'carefully' : 'careful'],
+  [/\bsophisticated\b/gi, 'advanced'],
+  [/\bleverag(e|ing)\b/gi, (_, suffix) => suffix === 'ing' ? 'using' : 'use'],
+  [/\benhance[ds]?\b/gi, 'improved'],
+  [/\butiliz(e|ing|ation)\b/gi, (_, suffix) => {
+    if (suffix === 'ing') return 'using';
+    if (suffix === 'ation') return 'use';
+    return 'use';
+  }],
+];
+
+function cleanSummaryOutput(raw) {
+  if (!raw) return raw;
+  let result = raw;
+  for (const [pattern, replacement] of BANNED_WORD_REPLACEMENTS) {
+    result = result.replace(pattern, replacement);
+  }
+  // Strip preamble lines like "Based on the git commit..." or "Here's a summary..."
+  result = result.replace(/^(Based on|Here's|Here is|Looking at|Let me)[^\n]*\n+/i, '');
+  return result.trim();
 }
 
 /**
@@ -415,7 +447,7 @@ ${sectionPrompt}`;
       new HumanMessage(userContent),
     ]);
 
-    return { summary: result.content };
+    return { summary: cleanSummaryOutput(result.content) };
   } catch (error) {
     return {
       summary: '[Summary generation failed]',
