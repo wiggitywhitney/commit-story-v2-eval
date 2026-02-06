@@ -39,7 +39,7 @@ The implementing AI MUST read the full research document before starting each mi
 ## Milestone 1: Per-Node Temperature Settings
 **Prerequisites**: Read `docs/research/v1-v2-journal-quality-analysis.md`, section "Difference 1: Temperature Settings"
 
-**Status**: Not Started
+**Status**: Complete
 
 The single biggest impact change. V2 uses temperature 0 globally. V1 used 0.7 for narrative sections and 0.1 for factual extraction.
 
@@ -58,7 +58,7 @@ The single biggest impact change. V2 uses temperature 0 globally. V1 used 0.7 fo
 ## Milestone 2: Restore Step-by-Step Prompt Architecture
 **Prerequisites**: Read `docs/research/v1-v2-journal-quality-analysis.md`, sections "Difference 2" and "Difference 3"
 
-**Status**: Not Started
+**Status**: Complete
 
 Restore the explicit Step 1, Step 2, ... Step N prompt structure from v1. The v1 prompts are in the v1 repo at `/Users/whitney.lee/Documents/Repositories/commit-story-v1`. Read them directly as your reference.
 
@@ -86,7 +86,7 @@ Restore the explicit Step 1, Step 2, ... Step N prompt structure from v1. The v1
 ## Milestone 3: Return to Free-Form Output for Dialogue and Technical Decisions
 **Prerequisites**: Read `docs/research/v1-v2-journal-quality-analysis.md`, section "Difference 4: Structured Output vs Free-Form"
 
-**Status**: Not Started
+**Status**: Complete
 
 Remove the Zod structured output schemas for dialogue and technical decisions. Return to free-form markdown output like v1.
 
@@ -107,7 +107,7 @@ Remove the Zod structured output schemas for dialogue and technical decisions. R
 ## Milestone 4: Restore Session Grouping and Context Formatting
 **Prerequisites**: Read `docs/research/v1-v2-journal-quality-analysis.md`, sections "Difference 5" and "Difference 6"
 
-**Status**: Not Started
+**Status**: Complete
 
 Restore v1's session-grouped message format and self-documenting context descriptions.
 
@@ -129,7 +129,7 @@ Restore v1's session-grouped message format and self-documenting context descrip
 ## Milestone 5: Dynamic maxQuotes, Early Exits, and Entry Deduplication
 **Prerequisites**: Read `docs/research/v1-v2-journal-quality-analysis.md`, sections "Difference 7", "Difference 8", and "Additional V2-Only Issues"
 
-**Status**: Not Started
+**Status**: Complete
 
 Restore v1's dynamic scaling and safety checks.
 
@@ -159,7 +159,7 @@ Restore v1's dynamic scaling and safety checks.
 ## Milestone 6: Validation and Cleanup
 **Prerequisites**: All previous milestones complete
 
-**Status**: Not Started
+**Status**: Complete
 
 End-to-end validation of the complete fix.
 
@@ -200,4 +200,10 @@ The v2 guidelines (context framing, output format) were added to address symptom
 
 ## Progress Log
 
-_No progress yet - PRD just created_
+- **Milestone 1**: Per-node temperature settings implemented (summary=0.7, dialogue=0.7, technical=0.1)
+- **Milestone 2**: Step-by-step prompt architecture restored for all three prompts with mentor framing, self-verification, and v2's WHAT TO SKIP additions
+- **Milestone 3**: Zod schemas and all parsing recovery logic removed (272 lines deleted). Dialogue and technical nodes return free-form markdown
+- **Milestone 4**: Session-grouped context formatting with `formatSessionsForAI()` and self-documenting data descriptions
+- **Milestone 5**: Dynamic maxQuotes formula, early exits for empty conversations, entry deduplication, full commit details (files changed, line counts, message)
+- **Milestone 6**: Validation complete. Additional fixes: removed conflicting output format guideline, added deterministic post-processing (banned word replacement, preamble/commentary stripping) to handle Claude Haiku's instruction-following limitations
+- **Additional discovery**: Claude Haiku doesn't reliably follow "no preamble" or "banned words" prompt instructions. Deterministic post-processing was added as a pragmatic solution (cleanSummaryOutput, cleanDialogueOutput, cleanTechnicalOutput)
