@@ -1,5 +1,7 @@
 # PRD #27: Restore Journal Generation Quality to V1 Levels
 
+**Status**: Complete (2026-02-06)
+
 ## Overview
 
 **Problem**: V2 journal entries have significant quality regressions compared to v1. Summaries use formal corporate language despite prompts asking for casual tone. Technical decisions sections are empty ~60-70% of the time. Dialogue extraction fails with parsing errors. Duplicate entries appear. Cross-context dialogue bleeds between sessions.
