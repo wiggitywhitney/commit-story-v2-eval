@@ -3,7 +3,8 @@
  *
  * Generates narrative summaries of development sessions with authentic significance matching.
  *
- * Ported from v1: Removed telemetry code, kept all prompt logic.
+ * Restored from v1: Explicit Step 1-4 architecture with mentor framing and self-verification.
+ * Kept from v2: Voice/tone examples with contractions and casual markers.
  */
 
 // Always present - opening sentence
@@ -43,13 +44,9 @@ Also include important discussions and discoveries, even if they didn't result i
     // Scenario 3: No Code + Chat - look for what was discussed/decided
     step2 = `## Step 2: Find What Was Discussed
 
-In the chat data, type:"user" messages are from the human developer. type:"assistant" messages are from the AI.
+In the chat data, type:"user" messages are from the human developer. type:"assistant" messages are from the AI. The user is your boss and their questions and insights are more important to you, although the overall story of the session matters too.
 
-CRITICAL: DO NOT copy or echo the AI's responses. The AI's explanations are context, not the work.
-Focus on what THE DEVELOPER did: What did they create, update, document, or decide?
-The commit message tells you what actually changed - use that as your primary source.
-
-Look at the git diff to see what files changed. Describe what the developer accomplished, not what the AI said.`;
+Look through the chat conversations. What was discussed, planned, or decided? What problems were explored? What alternatives were considered?`;
   } else {
     // Scenario 2 & 4: No substantial chat - skip
     step2 = `## Step 2: Skip this step.`;
@@ -87,13 +84,18 @@ This is a routine documentation update with minimal discussion. Write a brief fa
 - Avoid subjective qualifiers like "successfully", "significant", "major progress"
 - One sentence is often enough for simple changes`;
   } else {
-    // Scenarios 1, 2, 3: Normal framing
+    // Scenarios 1, 2, 3: Normal framing with mentor audience
     step3Intro = `## Step 3: Write the Summary
 
-Write for someone unfamiliar with the project who has no prior context. Write the summary as natural conversational prose, no bullet points, no section headers.
+You're helping the developer summarize this session for their mentor (who's also a friend). The developer wants to acknowledge both successes and challenges honestly. Write the summary as natural conversational prose, no bullet points, no section headers.
 
 **Voice & Tone:**
-Write casually but clearly, like explaining to a friend. Use third person ("the developer") to keep it universal.
+- Use contractions (wasn't, it's, didn't, they're)
+- Refer to "the developer" (third person, universal)
+- Acknowledge problems casually ("it was getting messy", "kept breaking")
+- Direct language over corporate-speak
+- Brief is fine - don't pad with filler
+- Never mention the mentor in your output
 
 TOO FORMAL (avoid):
 "The authentication module was refactored to implement a more maintainable architecture."
@@ -103,13 +105,6 @@ GOOD (aim for this):
 "The developer cleaned up the authentication code - it was getting tangled, so they restructured it."
 "The prompts were leaking internal reasoning into the final output, so the developer changed them to keep that internal."
 
-Key voice markers:
-- Use contractions (wasn't, it's, didn't, they're)
-- Refer to "the developer" (third person, universal)
-- Acknowledge problems casually ("it was getting messy", "kept breaking")
-- Direct language over corporate-speak
-- Brief is fine - don't pad with filler
-
 **Important guidelines:**
 - Use accurate verbs: "planned/designed/documented" for planning work, "implemented/built/coded" for functional code
 - Be honest - some work is interesting, some is routine. Both deserve accurate description without inflation or minimization
@@ -117,32 +112,25 @@ Key voice markers:
   }
 
   const prompt = `
-You are writing a journal entry about a development session. Write in third person using "the developer" to keep it universal.
+## Step 1: Understand the Code Changes
 
-VOICE REQUIREMENT (CRITICAL):
-- Write casually, like explaining to a friend who codes
-- Use "the developer" (third person) not "I" or passive voice
-- Use contractions: "didn't", "wasn't", "it's", "they're"
-- Keep it brief and direct
+You are the developer's assistant, trained to write in a direct-yet-friendly tone.
 
-BAD: "The journal output architecture was restructured to prevent reasoning artifacts."
-GOOD: "The developer restructured the journal output to stop it from leaking internal reasoning."
+Start by analyzing the git diff. What files changed? What was added, removed, or modified? Distinguish between documentation files and functional code files.
 
-BAD: "The core problem was that the previous prompts used step-by-step instructions."
-GOOD: "The prompts were walking through steps out loud, so the developer changed them to keep that internal."
+${step2}
 
-INTERNAL ANALYSIS (do not output this):
-- First, analyze the git diff: What files changed? What was added, removed, or modified?
-- Distinguish between documentation files and functional code files.
-${step2.replace('## Step 2: ', '- ')}
-
-WRITING GUIDELINES:
-${step3Intro.replace('## Step 3: Write the Summary\n\n', '')}
+${step3Intro}
 
 ${step3Instructions}
 
-OUTPUT:
-Write only your final narrative prose summary in third person. No bullet points, no numbered lists - prose paragraphs only. Do not include any analysis steps or meta-commentary. Just the summary text.
+## Step 4: Output
+
+Before you output, verify your summary is authentic - not inflated, not minimized, just honest. If it is not honest, revise the summary so that it is.
+
+BANNED WORDS: comprehensive, robust, significant, systematic, meticulous, methodical, sophisticated, leveraging, enhanced, utilizing. If any appear in your draft, replace them with simpler words.
+
+Then output ONLY your final narrative prose. No preamble like "Here's a summary" or "Based on the changes". No bullet points, no numbered lists. Start directly with what happened.
 `.trim();
 
   return prompt;

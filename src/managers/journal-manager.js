@@ -18,6 +18,44 @@ import {
 /** Separator between journal entries */
 const ENTRY_SEPARATOR = '\n═══════════════════════════════════════\n\n';
 
+/**
+ * Extract file paths from git diff headers
+ * @param {string} diff - Git diff content
+ * @returns {Array<string>} Array of file paths
+ */
+function extractFilesFromDiff(diff) {
+  if (!diff) return [];
+  const files = [];
+  const lines = diff.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      const match = line.match(/diff --git a\/(.+) b\/.+/);
+      if (match && match[1]) {
+        files.push(match[1]);
+      }
+    }
+  }
+  return files;
+}
+
+/**
+ * Count approximate lines changed from diff content
+ * @param {string} diff - Git diff content
+ * @returns {number} Approximate number of lines changed
+ */
+function countDiffLines(diff) {
+  if (!diff) return 0;
+  const lines = diff.split('\n');
+  let count = 0;
+  for (const line of lines) {
+    if ((line.startsWith('+') && !line.startsWith('+++')) ||
+        (line.startsWith('-') && !line.startsWith('---'))) {
+      count++;
+    }
+  }
+  return count;
+}
+
 /** Pattern to match reflection entry headers */
 const REFLECTION_HEADER_PATTERN = /^## (\d{1,2}:\d{2}:\d{2} [AP]M \w+) - (.+?)$/m;
 
@@ -100,12 +138,23 @@ export function formatJournalEntry(sections, commit, reflections = []) {
     lines.push(reflectionsSection);
   }
 
-  // Commit details
+  // Commit details (programmatic, matching v1 format)
   lines.push('### Commit Details');
-  lines.push(`- **Hash**: ${commit.hash}`);
-  lines.push(`- **Author**: ${commit.author}`);
-  if (commit.filesChanged !== undefined) {
-    lines.push(`- **Files Changed**: ${commit.filesChanged}`);
+  const filesChanged = extractFilesFromDiff(commit.diff);
+  if (filesChanged.length > 0) {
+    lines.push('**Files Changed**:');
+    for (const file of filesChanged) {
+      lines.push(`- ${file}`);
+    }
+    lines.push('');
+  }
+  const linesChanged = countDiffLines(commit.diff);
+  if (linesChanged > 0) {
+    lines.push(`**Lines Changed**: ~${linesChanged} lines`);
+  }
+  const commitMessage = (commit.message || '').split('\n')[0];
+  if (commitMessage) {
+    lines.push(`**Message**: "${commitMessage}"`);
   }
   lines.push('');
 
@@ -128,6 +177,17 @@ export async function saveJournalEntry(sections, commit, reflections = [], baseP
 
   // Ensure directory exists
   await ensureDirectory(entryPath);
+
+  // Check for duplicate entry (same commit hash already in file)
+  try {
+    const existing = await readFile(entryPath, 'utf-8');
+    if (existing.includes(`Commit: ${commit.shortHash}`)) {
+      // Already has an entry for this commit, skip
+      return entryPath;
+    }
+  } catch {
+    // File doesn't exist yet, proceed
+  }
 
   // Format the entry
   const formattedEntry = formatJournalEntry(sections, commit, reflections);

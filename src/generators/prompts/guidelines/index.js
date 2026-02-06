@@ -29,35 +29,16 @@ IMPORTANT: The AI's responses in the chat are CONTEXT, not the work itself.
 `.trim();
 
 /**
- * Output format guideline - sets output expectations
- */
-const outputFormatGuideline = `
-CRITICAL OUTPUT INSTRUCTION:
-You will receive guidance to help you write content. Think through the guidance internally, then OUTPUT ONLY YOUR FINAL CONTENT.
-
-NEVER include in your output:
-- Phrases like "I'll help you", "Let me", "Based on the plan", "Based on the development context"
-- Phrases like "I'll write a summary", "Here's a retrospective", "Looking at the changes"
-- Questions like "Would you like me to proceed?"
-- Step labels, numbered lists of what you'll do, or your analysis process
-- Checkmarks, verification notes, or meta-commentary about your work
-- References to "the plan" or instructions you received
-- Responses to directives in the chat (e.g., don't say "I'll commit and push")
-
-START DIRECTLY with what the developer did. No preamble.
-
-Your entire response should be the final content only - no preamble, no process notes.
-`.trim();
-
-/**
  * Combines all guidelines into a single formatted string
- * for inclusion in system prompts
+ * for inclusion in system prompts.
+ * V1 used only anti-hallucination + accessibility.
+ * V2 adds context framing to prevent the model from treating chat as active conversation.
+ * The output format guideline was removed because it conflicted with
+ * the restored step-by-step prompt architecture.
  */
 export function getAllGuidelines() {
   return `
 ${contextFramingGuideline}
-
-${outputFormatGuideline}
 
 ${antiHallucinationGuidelines}
 
