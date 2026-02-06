@@ -192,7 +192,7 @@ function formatSessionsForAI(sessions) {
 
   let index = 0;
   const result = [];
-  for (const [sessionId, messages] of sessions) {
+  for (const [, messages] of sessions) {
     index++;
     const firstMsg = messages[0];
     result.push({
@@ -255,7 +255,7 @@ function formatContextForSummary(context) {
 
   if (sessions && sessions.size > 0) {
     let index = 0;
-    for (const [sessionId, messages] of sessions) {
+    for (const [, messages] of sessions) {
       const userMsgs = messages.filter((m) => m.type === 'user');
       if (userMsgs.length > 0) {
         index++;
@@ -407,12 +407,14 @@ const BANNED_WORD_REPLACEMENTS = [
   [/\bmethodical(ly)?\b/gi, (_, suffix) => suffix ? 'carefully' : 'careful'],
   [/\ba sophisticated\b/gi, 'an advanced'],
   [/\bsophisticated\b/gi, 'advanced'],
-  [/\bleverag(e|ing)\b/gi, (_, suffix) => suffix === 'ing' ? 'using' : 'use'],
+  [/\bleverag(e[ds]?|ing)\b/gi, (_, suffix) => suffix === 'ing' ? 'using' : 'used'],
   [/\benhance[ds]?\b/gi, 'improved'],
-  [/\butiliz(e|ing|ation)\b/gi, (_, suffix) => {
+  [/\benhancing\b/gi, 'improving'],
+  [/\benhancements?\b/gi, (match) => match.endsWith('s') ? 'improvements' : 'improvement'],
+  [/\butiliz(e[ds]?|ing|ation)\b/gi, (_, suffix) => {
     if (suffix === 'ing') return 'using';
     if (suffix === 'ation') return 'use';
-    return 'use';
+    return 'used';
   }],
 ];
 
@@ -423,7 +425,7 @@ function cleanSummaryOutput(raw) {
     result = result.replace(pattern, replacement);
   }
   // Strip preamble lines like "Based on the git commit..." or "Here's a summary..."
-  result = result.replace(/^(Based on|Here's|Here is|Looking at|Let me)[^\n]*\n+/i, '');
+  result = result.replace(/^(Based on|Here's|Here is|Looking at|Let me)[^\n]*\n*/i, '');
   return result.trim();
 }
 
@@ -523,7 +525,7 @@ async function dialogueNode(state) {
     const guidelines = getAllGuidelines();
 
     // Dynamic maxQuotes: 8% of substantial user messages + 1 (v1 formula)
-    const maxQuotes = Math.ceil(substantialUserMessages * 0.08) + 1;
+    const maxQuotes = Math.min(Math.ceil(substantialUserMessages * 0.08) + 1, 15);
 
     // Replace {maxQuotes} placeholder in prompt
     const sectionPrompt = dialoguePrompt.replace(/{maxQuotes}/g, String(maxQuotes));
