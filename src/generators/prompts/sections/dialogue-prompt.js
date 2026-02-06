@@ -84,5 +84,5 @@ Format each conversational exchange as follows:
 
 Always use "Human:" not "User:" in labels.
 
-No commentary or explanations beyond the step outputs. Let the dialogue speak for itself.
+CRITICAL: Output ONLY the formatted quotes. No preamble like "Here are the quotes" or "Based on the summary". No commentary after the quotes like "These quotes show..." or "The developer's approach...". Start directly with the first "> **Human:**" line. Let the dialogue speak for itself.
 `.trim();

@@ -126,7 +126,11 @@ ${step3Instructions}
 
 ## Step 4: Output
 
-Before you output, verify your summary is authentic - not inflated, not minimized, just honest. If it is not honest, revise the summary so that it is. Then output only your final narrative prose.
+Before you output, verify your summary is authentic - not inflated, not minimized, just honest. If it is not honest, revise the summary so that it is.
+
+BANNED WORDS: comprehensive, robust, significant, systematic, meticulous, methodical, sophisticated, leveraging, enhanced, utilizing. If any appear in your draft, replace them with simpler words.
+
+Then output ONLY your final narrative prose. No preamble like "Here's a summary" or "Based on the changes". No bullet points, no numbered lists. Start directly with what happened.
 `.trim();
 
   return prompt;

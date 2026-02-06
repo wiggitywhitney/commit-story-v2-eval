@@ -56,5 +56,5 @@ Format each decision as follows:
   - [Additional reasons as needed]
   Tradeoffs: [Trade-off when explicitly discussed]
 
-Output only the formatted decisions. Do not include your analysis from Steps 1-4.
+CRITICAL: Output ONLY the formatted decisions using the exact format above. No preamble, no headers like "# Summary" or "## Key Accomplishments", no additional sections, no narrative paragraphs. Start directly with the first "**DECISION:" line. Do not include your analysis from Steps 1-4.
 `.trim();
