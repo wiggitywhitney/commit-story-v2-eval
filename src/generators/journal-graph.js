@@ -357,7 +357,9 @@ function cleanDialogueOutput(raw) {
   }
 
   const result = cleaned.join('\n').trim();
-  return result || raw; // Fallback to original if cleaning removed everything
+  if (!result) return raw; // Fallback to original if cleaning removed everything
+  // Fix literal \n from JSON-escaped content that the model copied verbatim
+  return result.replace(/\\n/g, '\n');
 }
 
 /**
@@ -388,7 +390,8 @@ function cleanTechnicalOutput(raw) {
   }
 
   const result = cleaned.join('\n').trim();
-  return result || raw; // Fallback to original if cleaning removed everything
+  // If no DECISION lines found, return default message instead of raw narrative
+  return result || 'No significant technical decisions documented for this development session';
 }
 
 /**
@@ -396,7 +399,7 @@ function cleanTechnicalOutput(raw) {
  * These words persist despite prompt instructions, so we handle them deterministically
  */
 const BANNED_WORD_REPLACEMENTS = [
-  [/\bcomprehensive\b/gi, 'detailed'],
+  [/\bcomprehensiv(e|ely)\b/gi, (_, suffix) => suffix === 'ely' ? 'thoroughly' : 'detailed'],
   [/\brobust\b/gi, 'solid'],
   [/\bsignificant\b/gi, 'important'],
   [/\bsystematic(ally)?\b/gi, (_, suffix) => suffix ? 'carefully' : 'structured'],
