@@ -11,7 +11,7 @@
 |---------|------|---------|
 | v1 | 2026-02-05 | Initial draft |
 | v2 | 2026-02-06 | Incorporated consolidated technical review (Michael Rishi Forrester + Claude). Resolved Q5 (framework choice). Added research spikes, file revert protocol, Coordinator-managed SDK writes, dependency installation workflow, variable shadowing checks, periodic schema checkpoints, configurable limits, in-memory results, span density guardrails, and fix loop ceilings. |
-| v3 | 2026-02-07 | Replaced hardcoded span caps with priority-based instrumentation hierarchy and review sensitivity. Restored rich LibraryRequirement objects in results. Added cost visibility. Moved testCommand env note to Configuration. Added technical explanation for uncovered patterns. |
+| v3 | 2026-02-07 | Replaced hardcoded span caps with priority-based instrumentation hierarchy and review sensitivity. Restored rich LibraryRequirement objects in results. Added cost visibility. Moved testCommand env note to Configuration. Added technical explanation for uncovered patterns. Added dry run mode, exclude patterns, per-file agent notes, schema hash tracking, agent version tagging, CLI and GitHub Action interfaces, progress callbacks, and config validation. |
 
 ---
 
@@ -77,7 +77,7 @@ The system has a **Coordinator** (deterministic script) that manages workflow an
 - **What it is:** A deterministic TypeScript script using Node.js
 - **Responsibilities:**
   - Branch management (create feature branch)
-  - File iteration (glob for files to process)
+  - File iteration (glob for files to process, apply exclude patterns)
   - **File snapshots** before handing to agent (for revert on failure)
   - Spawn AI agent instances
   - Collect results from each agent (in-memory)
@@ -85,7 +85,7 @@ The system has a **Coordinator** (deterministic script) that manages workflow an
   - **Aggregate library requirements** from all agents and perform single SDK init file write
   - **Bulk dependency installation** (`npm install` for all discovered libraries)
   - Run end-of-run validation (Weaver live-check)
-  - Assemble PR with summary (including per-file span category breakdown, review sensitivity annotations, and token usage data)
+  - Assemble PR with summary (including per-file span category breakdown, review sensitivity annotations, agent notes, and token usage data)
 - **Why not AI:** These are mechanical tasks that don't need intelligence
 
 #### Schema Builder Agent (Future — Not in PoC)
@@ -105,12 +105,41 @@ The system has a **Coordinator** (deterministic script) that manages workflow an
 
 This separation solves the "scope problem": discovery happens once in init, instrumentation follows established patterns. The Coordinator handles the mechanical orchestration.
 
-### Interfaces (cosmetic wrappers around core)
+### Coordinator Programmatic API
+
+**Architectural constraint:** The Coordinator exposes a programmatic API (a function that accepts a typed config object and returns a typed result). All interface layers (MCP server, CLI, GitHub Action) construct the config object from their respective inputs and call the same Coordinator function. No interface-specific logic lives in the Coordinator.
+
+#### Progress Callbacks
+
+The Coordinator accepts an optional `callbacks` object for progress reporting:
+
+```typescript
+interface CoordinatorCallbacks {
+  onFileStart?: (path: string, index: number, total: number) => void;
+  onFileComplete?: (result: FileResult, index: number, total: number) => void;
+  onSchemaCheckpoint?: (filesProcessed: number, passed: boolean) => void;
+  onValidationStart?: () => void;
+  onRunComplete?: (results: FileResult[]) => void;
+}
+```
+
+Each interface layer wires these to its own output mechanism: the CLI prints progress lines to stderr, the MCP server sends structured progress events, and the GitHub Action uses `core.info()` step annotations. The Coordinator itself never writes to stdout/stderr directly — all user-facing output flows through callbacks or the final result object. This keeps the Coordinator testable and interface-agnostic.
+
+### Interfaces
+
 - **MCP server** (PoC) — invoked from Claude Code
-- **CLI** (future) — `telemetry-agent instrument src/`
-- **GitHub Action** (future) — runs on PR/push
+- **CLI** (PoC) — `telemetry-agent instrument src/`
+- **GitHub Action** (PoC) — runs on workflow_dispatch (manual trigger)
 
 **PoC call chain:** Claude Code invokes MCP server tools → MCP server wraps the Coordinator → Coordinator runs the deterministic workflow (branch, file iteration, validation, PR) and spawns fresh Instrumentation Agent instances for each file. The MCP server is a thin interface layer; the Coordinator is where the orchestration logic lives.
+
+#### CLI
+
+A thin wrapper that parses command-line arguments into a Coordinator config object. Uses `yargs` or manual `process.argv` parsing. Supports `--dry-run`, `--output json` (dumps raw result array for piping), and `--verbose`/`--debug` flags. Exit codes: 0 = all files succeeded, 1 = partial success (some files failed but PR created), 2 = total failure. The CLI is the reference interface for testing and scripting.
+
+#### GitHub Action
+
+An `action.yml` that runs the CLI in a GitHub Actions runner. Setup steps: `actions/setup-node@v4`, npm install, install Weaver CLI. Uses `${{ github.token }}` for PR creation (no additional auth configuration needed). Default trigger: `workflow_dispatch` (manual). Future triggers (on push, on PR) are configuration, not code changes. The Action posts the PR summary as a step output and optionally as a PR comment.
 
 ### Technology Stack (PoC)
 
@@ -190,22 +219,24 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 │  telemetry-agent instrument <path> (REQUIRES INIT)              │
 │                                                                 │
 │  COORDINATOR (deterministic script):                            │
-│  1. Create feature branch                                       │
-│  2. Glob for files to process                                   │
-│  3. For each file:                                              │
+│  1. Validate config (Zod schema)                                │
+│  2. Create feature branch (skipped in dry run)                  │
+│  3. Glob for files to process, apply exclude patterns           │
+│  4. For each file:                                              │
 │     a. Snapshot file (copy for revert on failure)               │
 │     b. Spawn Instrumentation Agent (fresh instance)             │
 │     c. Collect result (in-memory)                               │
 │     d. If agent failed → revert file to snapshot                │
 │     e. If agent succeeded → commit code + schema changes        │
 │     f. Every N files → periodic schema checkpoint               │
-│  4. After all files:                                            │
+│  5. After all files:                                            │
 │     a. Aggregate libraries_needed from all results              │
 │     b. npm install all discovered libraries (bulk)              │
 │     c. Write SDK init file once (register all libraries)        │
 │     d. Commit SDK + package.json changes                        │
-│  5. Run end-of-run validation (tests + Weaver live-check)       │
-│  6. Create PR with summary (category breakdown + cost data)     │
+│  6. Run end-of-run validation (tests + Weaver live-check)       │
+│  7. Create PR with summary (category breakdown + cost data)     │
+│  Note: Steps 2, 4e, 5, 6, 7 are skipped when dryRun: true     │
 │                                                                 │
 │  INSTRUMENTATION AGENT (per file, fresh instance):              │
 │  1. Read config → get schema path                               │
@@ -290,7 +321,7 @@ The agent follows a priority hierarchy when deciding what to instrument. Each fu
 1. **External calls** — Functions making DB, HTTP, gRPC, or message queue calls. These are service boundaries where traces provide the most diagnostic value.
 2. **Schema-defined spans** — Spans explicitly defined in the Weaver schema. The human already decided these matter.
 3. **Service-layer entry points** — Exported async functions in service/handler directories not already covered by tiers 1 or 2.
-4. **Everything else is skipped** — Utilities, formatters, pure helpers, synchronous internals. The agent does not instrument these.
+4. **Everything else is skipped** — Utilities, formatters, pure helpers, synchronous internals. The agent does not instrument these. As a concrete heuristic: functions under ~5 lines, pure synchronous functions, type guards, and simple data transformations should never be instrumented regardless of where they live in the codebase.
 
 The agent should be able to articulate which tier each instrumented function falls into. This categorization is recorded in the result (see `span_categories` in Result Data).
 
@@ -307,8 +338,6 @@ reviewSensitivity: moderate  # strict | moderate | off
 - **strict** — The PR summary flags any file where the agent added spans beyond the top two priority tiers (external calls + schema-defined). Outlier detection uses tighter thresholds. Use when you want to review everything that isn't obviously correct.
 - **moderate** (default) — Flag only statistical outliers: files where span count is significantly above the per-run average. Include the per-file category breakdown table in the PR summary. Use when you want to know if something looks unusual.
 - **off** — The category breakdown table still appears in the PR summary (it's useful documentation), but no warnings or flags are emitted.
-
-The sensitivity setting only controls how the Coordinator annotates the PR summary. It does not change the agent's behavior — the agent always follows the same priority hierarchy. The Coordinator surfaces data for human review; it does not gate the agent's output.
 
 ### Schema guidance
 - Schema defines attribute groups and naming patterns
@@ -757,17 +786,27 @@ interface FileResult {
   schema_extensions: string[];              // IDs of new schema entries
   attributes_created: number;
   validation_retries: number;
-  span_categories: {
+  span_categories?: {                       // optional — not present on early failures
     external_calls: number;
     schema_defined: number;
     service_entry_points: number;
   };
+  notes?: string[];                         // agent's judgment call explanations
+  schemaHashBefore?: string;                // hash of resolved schema before agent ran
+  schemaHashAfter?: string;                 // hash of resolved schema after agent ran
+  agentVersion?: string;                    // version of agent/prompt that produced this result
   reason?: string;                          // present if failed
   last_error?: string;                      // present if failed
 }
 ```
 
 The agent reports the full library requirement (package name + import name) because it has the file context to determine the correct import. This keeps the Coordinator deterministic — it can write the SDK init file without needing allowlist lookups.
+
+The `notes` field lets the agent explain judgment calls — e.g., "skipped processPayment because it's already wrapped in a span from an outer function" or "this file has unusually deep nesting; consider refactoring before instrumenting." These notes flow into the PR summary and make the PR reviewable by someone who wasn't watching the agent work.
+
+Schema hashes let the Coordinator trace exactly which agent introduced a schema change. If end-of-run Weaver validation fails, the Coordinator can identify the file whose schema modification caused the failure by comparing hashes across the result sequence. This is a cheap diagnostic — just an MD5 of the resolved schema JSON — not a full diff.
+
+The `agentVersion` field tracks which version of the agent (or system prompt) produced each result. During prompt iteration — especially during the RS1 research spike — this lets you compare results across prompt versions and identify which changes improved or degraded output quality. Even a manually-bumped string (e.g., "v0.3-prompt-experiment") is useful. The Coordinator includes the agent version in the PR description.
 
 Success example:
 ```json
@@ -788,7 +827,8 @@ Success example:
     "external_calls": 2,
     "schema_defined": 1,
     "service_entry_points": 0
-  }
+  },
+  "notes": ["skipped validateInput — pure sync utility under 5 lines"]
 }
 ```
 
@@ -802,11 +842,6 @@ Failure example:
   "schema_extensions": [],
   "attributes_created": 0,
   "validation_retries": 3,
-  "span_categories": {
-    "external_calls": 0,
-    "schema_defined": 0,
-    "service_entry_points": 0
-  },
   "reason": "syntax errors after 3 fix attempts",
   "last_error": "Unexpected token at line 42"
 }
@@ -819,15 +854,15 @@ The Coordinator renders results into the PR description as a human-readable summ
 - Per-file status, spans added, libraries discovered, schema extensions, and any failures with reasons
 - **Per-file span category breakdown table** — shows how many spans fall into each priority tier per file (always included regardless of `reviewSensitivity` setting)
 - **Review sensitivity annotations** — warnings or flags based on the configured sensitivity level (see Review Sensitivity under What Gets Instrumented)
+- **Agent notes** — judgment call explanations from each file's result, surfaced inline with the per-file summary
 - **Token usage data** — pre-run estimate and actual token usage from `gen_ai.usage.*` attributes in agent self-instrumentation spans (see Cost Visibility under Configuration)
+- **Agent version** — which agent/prompt version produced the results (useful for comparing across prompt iterations)
 
 This builds trust with reviewers without polluting the git history with machine-readable artifacts.
 
-### Future: Schema State Tracking
+### Schema Hash Tracking
 
-Each agent can extend the schema, and extensions propagate via git commits. If Agent C's extension conflicts with Agent B's, periodic schema checkpoints and end-of-run Weaver validation catch it.
-
-For future debugging, could add schema version/hash per agent run to track what schema state each agent started with. Not needed for PoC.
+Each agent can extend the schema, and extensions propagate via git commits. The `schemaHashBefore` and `schemaHashAfter` fields in each result let the Coordinator trace exactly which file's agent introduced a schema change. If Agent C's extension conflicts with Agent B's, the Coordinator can pinpoint the divergence by walking the hash sequence. Periodic schema checkpoints and end-of-run Weaver validation catch the resulting errors.
 
 ---
 
@@ -854,6 +889,18 @@ schemaCheckpointInterval: 5    # run Weaver validation every N files
 
 # Review
 reviewSensitivity: moderate    # strict | moderate | off
+
+# Execution mode
+dryRun: false                  # true = analyze only, no code changes or PR
+
+# File filtering
+exclude:                        # glob patterns to skip
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "src/generated/**"
+
+# Future (not implemented in PoC, reserved for post-PoC)
+# instrumentationMode: balanced  # thorough | balanced | minimal
 ```
 
 > **Implementation note (`testCommand`):** The test command runs with `OTEL_EXPORTER_OTLP_ENDPOINT` overridden to point at Weaver during validation. Verify that the test runner correctly inherits environment variables — `execSync` with env override behaves differently than `spawn` with env inheritance, and meta-runners like nx or turbo may spawn subprocesses that don't inherit the override. For PoC, `npm test` with `execSync` and explicit env is sufficient.
@@ -868,10 +915,28 @@ reviewSensitivity: moderate    # strict | moderate | off
 | Agent behavior settings | Span definitions |
 | Limits and guardrails | |
 | Review sensitivity | |
+| Execution mode (dry run) | |
+| File exclude patterns | |
 
 The config tells the agent **how to run**. The schema tells it **what telemetry looks like**.
 
 Note: OTLP endpoint for production is configured in the user's OTel SDK setup, not here. During validation, the agent temporarily uses Weaver as the receiver.
+
+### Dry Run Mode
+
+When `dryRun: true`, the Coordinator runs the full analysis pipeline — file globbing, agent spawning, result collection — but skips all write operations: no branch creation, no file modifications, no git commits, no npm install, no PR. The Coordinator outputs the collected results as a summary (same format as the PR description). This is useful during prompt tuning and calibration: you can run the agent against your codebase repeatedly without creating throwaway branches. The agents still make LLM API calls (and incur token costs), but no filesystem or git state is modified.
+
+### Exclude Patterns
+
+The Coordinator applies exclude patterns after globbing. The SDK init file path (from `sdkInitFile`) is automatically excluded — the agent should not instrument the file that the Coordinator manages. Test files are excluded by default; override with an empty `exclude` list if you want the agent to consider them.
+
+### Instrumentation Mode (Reserved)
+
+The `instrumentationMode` setting is reserved for post-PoC. It would control how aggressively the agent applies the priority hierarchy: `thorough` instruments tier 3 (service entry points) more liberally, `minimal` sticks strictly to tiers 1 and 2, and `balanced` uses the agent's judgment. For the PoC, the agent always operates in `balanced` mode. The config key is commented out but reserved to prevent future naming conflicts.
+
+### Config Validation
+
+The Coordinator validates the config at startup using a Zod schema (or equivalent runtime validator). Invalid or unknown fields produce clear error messages — e.g., `Unknown config field 'maxSpanPerFile' — did you mean 'maxFixAttempts'?`. This catches typos and stale config from earlier spec versions. The validation schema is the single source of truth for config shape; the YAML block above is documentation, not the implementation.
 
 ### Cost Visibility
 
@@ -1055,7 +1120,7 @@ Four levers:
 
 1. **Fresh instance per file** — Prevents laziness, each file gets full attention
 2. **Weaver validation chain** — Catches errors via static check and live-check
-3. **Schema drift detection** — Coordinator sums `attributes_created` and `spans_added` across results; periodic schema checkpoints catch drift early
+3. **Schema drift detection** — Coordinator sums `attributes_created` and `spans_added` across results; periodic schema checkpoints catch drift early; schema hash tracking pinpoints which file introduced a breaking change
 4. **Priority hierarchy + review sensitivity** — The agent follows a strict instrumentation priority hierarchy (external calls → schema-defined → service entry points → skip everything else). The Coordinator annotates the PR summary based on the configured review sensitivity, flagging outliers for human review without gating the agent's output.
 
 ---
@@ -1081,8 +1146,11 @@ Four levers:
 - Assumes target codebase already has OTel API and SDK installed, initialized, and a valid Weaver schema in place
 - Pre-implementation research spikes (RS1: prompt engineering, RS2: fix loop design)
 - MCP server interface
+- CLI interface with JSON output mode and meaningful exit codes
+- GitHub Action with workflow_dispatch trigger
 - Coordinator + agent architecture:
   - Coordinator (deterministic TypeScript script for orchestration)
+  - Coordinator programmatic API with progress callbacks
   - Instrumentation Agent (per-file, via direct Anthropic SDK)
   - Schema Builder Agent descoped (schema must exist)
 - Mandatory init phase with prerequisite verification and SDK init file path recording
@@ -1093,27 +1161,29 @@ Four levers:
 - Variable shadowing checks via ts-morph scope analysis
 - TypeScript support
 - Traces only (no metrics/logs yet)
-- File/directory input
+- File/directory input with configurable exclude patterns
 - Sequential processing with fresh agent instance per file
 - Configurable file limit (default 50)
 - Periodic schema checkpoints
-- PR output with span category breakdown and cost data
+- PR output with span category breakdown, agent notes, and cost data
 - Per-file validation with fix loops: syntax, lint, Weaver static (with max attempts and token budget)
 - Priority-based instrumentation hierarchy with configurable review sensitivity
 - End-of-run validation: tests, Weaver live-check
 - Allowlist-first library discovery with npm registry fallback
 - Schema extension with semconv priority
+- Dry run mode for prompt tuning and calibration
+- Config validation (Zod schema)
+- Schema hash tracking and agent version tagging in results
 
 ### Out of Scope (Future)
 - Schema Builder Agent (auto-generate schema from codebase discovery)
 - Async/event-driven patterns (event emitters, pub/sub, cron jobs, queue consumers)
-- CLI and GitHub Action interfaces
 - Multi-agent for different signal types (separate metrics/logs/traces agents)
 - Other languages
 - Smart test discovery
 - Vector database for OTel knowledge
 - Backend verification (query observability platform)
-- Configurable instrumentation levels (dev-heavy vs production-selective)
+- Configurable instrumentation levels (dev-heavy vs production-selective — `instrumentationMode` config key reserved)
 - Parallel agent execution (architecture supports it; needs schema merge strategy)
 
 ---
@@ -1139,7 +1209,7 @@ Relevant when the agent targets codebases that don't already have OTel installed
 - "Instrument everything" is NOT industry best practice for production
 - Consensus: auto-instrumentation baseline + manual for business-critical paths
 - v1's heavy dev instrumentation was intentional for AI debugging assistance
-- Agent should eventually support configurable modes
+- Agent should eventually support configurable modes (`instrumentationMode` config key reserved for this)
 
 ---
 
