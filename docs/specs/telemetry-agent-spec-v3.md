@@ -11,7 +11,7 @@
 |---------|------|---------|
 | v1 | 2026-02-05 | Initial draft |
 | v2 | 2026-02-06 | Incorporated consolidated technical review (Michael Rishi Forrester + Claude). Resolved Q5 (framework choice). Added research spikes, file revert protocol, Coordinator-managed SDK writes, dependency installation workflow, variable shadowing checks, periodic schema checkpoints, configurable limits, in-memory results, span density guardrails, and fix loop ceilings. |
-| v3 | 2026-02-07 | Replaced hardcoded span caps with priority-based instrumentation hierarchy and review sensitivity. Restored rich LibraryRequirement objects in results. Added cost visibility. Moved testCommand env note to Configuration. Added technical explanation for uncovered patterns. Added dry run mode, exclude patterns, per-file agent notes, schema hash tracking, agent version tagging, CLI and GitHub Action interfaces, progress callbacks, and config validation. |
+| v3 | 2026-02-07 | **Instrumentation model:** Replaced hardcoded span caps with priority-based hierarchy and review sensitivity. Restored rich LibraryRequirement objects. Added cost visibility. **Interfaces:** Moved CLI and GitHub Action to PoC scope. Added Coordinator programmatic API with progress callbacks. **Execution:** Added dry run mode, exclude patterns, config validation (Zod). **Result enrichment:** Added per-file agent notes, schema hash tracking, agent version tagging. **Spec hygiene:** Moved testCommand env note to Configuration. Added technical explanation for uncovered async patterns. |
 
 ---
 
@@ -160,11 +160,6 @@ An `action.yml` that runs the CLI in a GitHub Actions runner. Setup steps: `acti
 **Note on Weaver MCP server:** Weaver v0.21.2 introduced `weaver registry mcp` — an MCP server providing search, get, and live-check tools directly. Since the PoC architecture already uses MCP (Claude Code → MCP server → Coordinator), the agent could interact with Weaver's native MCP server for schema operations instead of shelling out to CLI commands. Weaver v0.21.2 also added `weaver serve` (REST API + web UI) which could help during development/debugging.
 
 **Implementation-time decision:** Weaver CLI vs MCP server. The CLI approach (`weaver registry check`, `weaver registry resolve`) is simpler — just shell out and parse output. The MCP approach could provide tighter integration but adds architectural complexity (the Coordinator would need to maintain an MCP client connection to Weaver alongside its own MCP server for Claude Code). Start with CLI for PoC; consider MCP if schema operations become a bottleneck.
-
-### Key Tools
-- **ts-morph** for AST manipulation (TypeScript-native, full type access)
-- **Weaver** for schema validation and live-check
-- **Prettier** for post-transformation formatting
 
 ---
 
@@ -937,7 +932,7 @@ The Coordinator applies exclude patterns after globbing. The SDK init file path 
 
 ### Instrumentation Mode (Reserved)
 
-The `instrumentationMode` setting is reserved for post-PoC. It would control how aggressively the agent applies the priority hierarchy: `thorough` instruments tier 3 (service entry points) more liberally, `minimal` sticks strictly to tiers 1 and 2, and `balanced` uses the agent's judgment. For the PoC, the agent always operates in `balanced` mode. The config key is commented out but reserved to prevent future naming conflicts.
+The `instrumentationMode` setting is reserved for post-PoC. It would control how aggressively the agent applies the priority hierarchy: `thorough` instruments tier 3 (service entry points) more liberally, `minimal` sticks strictly to tiers 1 and 2, and `balanced` uses the agent's judgment. For the PoC, the agent always operates in `balanced` mode. The commented-out YAML key documents the intent; the Zod config validation schema should include it as an optional recognized field so future usage doesn't trigger an "unknown field" error.
 
 ### Config Validation
 
@@ -1148,36 +1143,48 @@ Four levers:
 ## PoC Scope
 
 ### In Scope
+
+**Prerequisites and setup:**
 - Assumes target codebase already has OTel API and SDK installed, initialized, and a valid Weaver schema in place
 - Pre-implementation research spikes (RS1: prompt engineering, RS2: fix loop design)
+- Mandatory init phase with prerequisite verification and SDK init file path recording
+- Config validation (Zod schema)
+
+**Architecture:**
+- Coordinator (deterministic TypeScript script for orchestration)
+- Coordinator programmatic API with progress callbacks
+- Instrumentation Agent (per-file, via direct Anthropic SDK)
+- Schema Builder Agent descoped (schema must exist)
+
+**Interfaces:**
 - MCP server interface
 - CLI interface with JSON output mode and meaningful exit codes
 - GitHub Action with workflow_dispatch trigger
-- Coordinator + agent architecture:
-  - Coordinator (deterministic TypeScript script for orchestration)
-  - Coordinator programmatic API with progress callbacks
-  - Instrumentation Agent (per-file, via direct Anthropic SDK)
-  - Schema Builder Agent descoped (schema must exist)
-- Mandatory init phase with prerequisite verification and SDK init file path recording
-- Coordinator-managed SDK init file writes (single write after all agents)
-- Coordinator-managed dependency installation (bulk npm install)
-- File revert protocol (snapshot before agent, revert on failure)
-- In-memory result collection with PR description rendering
+
+**Instrumentation:**
+- TypeScript support, traces only (no metrics/logs yet)
+- Priority-based instrumentation hierarchy with configurable review sensitivity
+- Allowlist-first library discovery with npm registry fallback
+- Schema extension with semconv priority
 - Variable shadowing checks via ts-morph scope analysis
-- TypeScript support
-- Traces only (no metrics/logs yet)
+
+**Execution:**
 - File/directory input with configurable exclude patterns
 - Sequential processing with fresh agent instance per file
 - Configurable file limit (default 50)
-- Periodic schema checkpoints
-- PR output with span category breakdown, agent notes, and cost data
-- Per-file validation with fix loops: syntax, lint, Weaver static (with max attempts and token budget)
-- Priority-based instrumentation hierarchy with configurable review sensitivity
-- End-of-run validation: tests, Weaver live-check
-- Allowlist-first library discovery with npm registry fallback
-- Schema extension with semconv priority
 - Dry run mode for prompt tuning and calibration
-- Config validation (Zod schema)
+- Coordinator-managed SDK init file writes (single write after all agents)
+- Coordinator-managed dependency installation (bulk npm install)
+- File revert protocol (snapshot before agent, revert on failure)
+
+**Validation:**
+- Per-file validation with fix loops: syntax, lint, Weaver static (with max attempts and token budget)
+- Periodic schema checkpoints
+- End-of-run validation: tests, Weaver live-check
+
+**Output:**
+- In-memory result collection with PR description rendering
+- PR output with span category breakdown, agent notes, and cost data
 - Schema hash tracking and agent version tagging in results
 
 ### Out of Scope (Future)
