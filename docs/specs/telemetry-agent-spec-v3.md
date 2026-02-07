@@ -119,6 +119,7 @@ interface CoordinatorCallbacks {
   onFileComplete?: (result: FileResult, index: number, total: number) => void;
   onSchemaCheckpoint?: (filesProcessed: number, passed: boolean) => void;
   onValidationStart?: () => void;
+  onValidationComplete?: (passed: boolean, complianceReport: string) => void;
   onRunComplete?: (results: FileResult[]) => void;
 }
 ```
@@ -131,11 +132,11 @@ Each interface layer wires these to its own output mechanism: the CLI prints pro
 - **CLI** (PoC) — `telemetry-agent instrument src/`
 - **GitHub Action** (PoC) — runs on workflow_dispatch (manual trigger)
 
-**PoC call chain:** Claude Code invokes MCP server tools → MCP server wraps the Coordinator → Coordinator runs the deterministic workflow (branch, file iteration, validation, PR) and spawns fresh Instrumentation Agent instances for each file. The MCP server is a thin interface layer; the Coordinator is where the orchestration logic lives.
+**Call chains:** Claude Code invokes MCP server tools → MCP server wraps the Coordinator → Coordinator runs the deterministic workflow (branch, file iteration, validation, PR) and spawns fresh Instrumentation Agent instances for each file. The MCP server is a thin interface layer; the Coordinator is where the orchestration logic lives. The CLI and GitHub Action follow the same pattern: parse their respective inputs into a Coordinator config object, call the Coordinator function, and format the result for their output channel.
 
 #### CLI
 
-A thin wrapper that parses command-line arguments into a Coordinator config object. Uses `yargs` or manual `process.argv` parsing. Supports `--dry-run`, `--output json` (dumps raw result array for piping), and `--verbose`/`--debug` flags. Exit codes: 0 = all files succeeded, 1 = partial success (some files failed but PR created), 2 = total failure. The CLI is the reference interface for testing and scripting.
+A thin wrapper that parses command-line arguments into a Coordinator config object. Uses `yargs` or manual `process.argv` parsing. Supports `--dry-run`, `--output json` (dumps raw result array for piping), and `--verbose`/`--debug` flags. Exit codes: 0 = all files succeeded, 1 = partial success (some files failed), 2 = total failure. The CLI is the reference interface for testing and scripting.
 
 #### GitHub Action
 
@@ -195,7 +196,7 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 
 1. **`package.json`** — provides namespace
 2. **OTel SDK initialized** — user's responsibility, not agent's job. Init phase records the file path.
-3. **`@opentelemetry/api` in dependencies** — minimum SDK version: compatible with OTel JS SDK 2.0+ (see `@opentelemetry/auto-instrumentations-node` v0.68.0 compatibility notes)
+3. **`@opentelemetry/api` in dependencies** — minimum SDK version: compatible with OTel JS SDK 2.0+ (the allowlist in this spec is sourced from `@opentelemetry/auto-instrumentations-node` v0.68.0's package list, but the agent does NOT use that mega-bundle — it installs individual instrumentation packages)
 4. **OTLP endpoint configured** — for production use (Datadog, Jaeger, etc.). During validation, agent temporarily overrides to point at Weaver.
 5. **Test suite exists** — for validation (agent warns if missing). The `testCommand` config accepts any runner (npm test, vitest, jest, nx test, etc.) — fine for PoC with npm, note for post-PoC that arbitrary runners should be well-supported.
 
@@ -236,7 +237,8 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 │     d. Commit SDK + package.json changes                        │
 │  6. Run end-of-run validation (tests + Weaver live-check)       │
 │  7. Create PR with summary (category breakdown + cost data)     │
-│  Note: Steps 2, 4e, 5, 6, 7 are skipped when dryRun: true     │
+│  Note: In dry run, Coordinator reverts all files after agent   │
+│  runs (keeping results) and skips steps 2, 5, 6, 7            │
 │                                                                 │
 │  INSTRUMENTATION AGENT (per file, fresh instance):              │
 │  1. Read config → get schema path                               │
@@ -390,9 +392,7 @@ export async function getUser(id: string) {
 }
 ```
 
-The agent does NOT modify the SDK init file. The Coordinator handles this after all agents complete.
-
-The agent reports the full library requirement (package name + import name) because it has the file context to determine the correct import. This keeps the Coordinator deterministic — it can write the SDK init file without needing allowlist lookups.
+The agent does NOT modify the SDK init file. The Coordinator handles this after all agents complete. The agent reports the full library requirement (package + import name) so the Coordinator can write the SDK file deterministically — see Result Data for details.
 
 **Step 3: Coordinator writes SDK init file (once, after all agents)**
 ```typescript
@@ -768,7 +768,7 @@ Each Instrumentation Agent returns a result object to the Coordinator. Results a
 
 Results are collected by the Coordinator as it processes each file sequentially. Since the Coordinator is a single process running a simple loop, it already has all results in memory by the time it needs them. No inter-process communication, no filesystem coordination, no cleanup.
 
-For debugging, the Coordinator can optionally write results to a gitignored directory when run with `--verbose` or `--debug`. This is a debug aid, not architecture.
+For debugging, the Coordinator can optionally write results to a gitignored directory when configured with verbose or debug mode (exposed as a config field; interface layers map their own flags to it). This is a debug aid, not architecture.
 
 ### Result Structure
 
@@ -790,13 +790,14 @@ interface FileResult {
     external_calls: number;
     schema_defined: number;
     service_entry_points: number;
+    total_functions_in_file: number;        // denominator for ratio-based backstop
   };
   notes?: string[];                         // agent's judgment call explanations
   schemaHashBefore?: string;                // hash of resolved schema before agent ran
   schemaHashAfter?: string;                 // hash of resolved schema after agent ran
   agentVersion?: string;                    // version of agent/prompt that produced this result
-  reason?: string;                          // present if failed
-  last_error?: string;                      // present if failed
+  reason?: string;                          // human-readable summary, e.g. "syntax errors after 3 fix attempts"
+  last_error?: string;                      // raw error output for debugging, e.g. "Unexpected token at line 42"
 }
 ```
 
@@ -804,7 +805,7 @@ The agent reports the full library requirement (package name + import name) beca
 
 The `notes` field lets the agent explain judgment calls — e.g., "skipped processPayment because it's already wrapped in a span from an outer function" or "this file has unusually deep nesting; consider refactoring before instrumenting." These notes flow into the PR summary and make the PR reviewable by someone who wasn't watching the agent work.
 
-Schema hashes let the Coordinator trace exactly which agent introduced a schema change. If end-of-run Weaver validation fails, the Coordinator can identify the file whose schema modification caused the failure by comparing hashes across the result sequence. This is a cheap diagnostic — just an MD5 of the resolved schema JSON — not a full diff.
+Schema hashes let the Coordinator trace exactly which agent introduced a schema change. If end-of-run Weaver validation fails, the Coordinator can identify the file whose schema modification caused the failure by comparing hashes across the result sequence. This is a cheap diagnostic — just a fast hash of the resolved schema JSON — not a full diff.
 
 The `agentVersion` field tracks which version of the agent (or system prompt) produced each result. During prompt iteration — especially during the RS1 research spike — this lets you compare results across prompt versions and identify which changes improved or degraded output quality. Even a manually-bumped string (e.g., "v0.3-prompt-experiment") is useful. The Coordinator includes the agent version in the PR description.
 
@@ -826,9 +827,11 @@ Success example:
   "span_categories": {
     "external_calls": 2,
     "schema_defined": 1,
-    "service_entry_points": 0
+    "service_entry_points": 0,
+    "total_functions_in_file": 12
   },
-  "notes": ["skipped validateInput — pure sync utility under 5 lines"]
+  "notes": ["skipped validateInput — pure sync utility under 5 lines"],
+  "agentVersion": "v0.1"
 }
 ```
 
@@ -924,7 +927,9 @@ Note: OTLP endpoint for production is configured in the user's OTel SDK setup, n
 
 ### Dry Run Mode
 
-When `dryRun: true`, the Coordinator runs the full analysis pipeline — file globbing, agent spawning, result collection — but skips all write operations: no branch creation, no file modifications, no git commits, no npm install, no PR. The Coordinator outputs the collected results as a summary (same format as the PR description). This is useful during prompt tuning and calibration: you can run the agent against your codebase repeatedly without creating throwaway branches. The agents still make LLM API calls (and incur token costs), but no filesystem or git state is modified.
+When `dryRun: true`, the Coordinator runs the full analysis pipeline — file globbing, agent spawning, result collection — but treats every file as a revert: each agent runs normally (transforms the file, extends the schema, returns its result), then the Coordinator restores the file from its snapshot instead of committing. No branch is created, no npm install runs, no PR is created. The Coordinator outputs the collected results as a summary (same format as the PR description). This reuses the existing snapshot/revert mechanism — dry run is just "revert every file regardless of success."
+
+This is useful during prompt tuning and calibration: you can run the agent against your codebase repeatedly without creating throwaway branches. The agents still make LLM API calls (and incur token costs), but no persistent filesystem or git state is modified.
 
 ### Exclude Patterns
 
