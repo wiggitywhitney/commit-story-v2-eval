@@ -5,7 +5,7 @@
 **Updated:** 2026-02-07
 **Purpose:** AI agent that auto-instruments TypeScript code with OpenTelemetry based on a Weaver schema
 
-### Revision History
+## Revision History
 
 | Version | Date | Changes |
 |---------|------|---------|
@@ -149,7 +149,7 @@ An `action.yml` that runs the CLI in a GitHub Actions runner. Setup steps: `acti
 | Coordinator | Plain TypeScript (Node.js) | Deterministic orchestration doesn't need a framework |
 | Instrumentation Agent | Direct Anthropic API via `@anthropic-ai/sdk` | Single provider, maximum control, simplest debugging |
 | AST manipulation | ts-morph | TypeScript-native, full type access, scope analysis |
-| Schema validation | Weaver CLI (with awareness of Weaver MCP server in v0.21.2) |
+| Schema validation | Weaver CLI (with awareness of Weaver MCP server in v0.21.2) | Deterministic validation decoupled from MCP integration during PoC |
 | Code formatting | Prettier | Post-transformation formatting |
 | MCP interface | MCP TypeScript SDK | Thin wrapper over Coordinator |
 
