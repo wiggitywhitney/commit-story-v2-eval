@@ -194,9 +194,15 @@ export async function saveJournalEntry(sections, commit, reflections = [], baseP
     // Path 2: Semantic match (catches cherry-pick/rebase duplicates)
     // Cherry-picks and rebases preserve author timestamp and commit message
     // but produce a new commit hash. Match on both to avoid false positives.
+    // Split into entry blocks so we check timestamp+message within the SAME entry,
+    // avoiding false positives when different entries share one field each.
     const timeStr = formatTimestamp(commit.timestamp);
     const commitMessage = (commit.message || '').split('\n')[0];
-    if (commitMessage && existing.includes(`## ${timeStr}`) && existing.includes(`**Message**: "${commitMessage}"`)) {
+    const entryBlocks = existing.split('═══════════════════════════════════════');
+    const isSemanticDup = commitMessage && entryBlocks.some(
+      block => block.includes(`## ${timeStr}`) && block.includes(`**Message**: "${commitMessage}"`)
+    );
+    if (isSemanticDup) {
       log(`Skipping duplicate entry: semantic match — same timestamp (${timeStr}) and message ("${commitMessage}"), likely cherry-pick/rebase of ${commit.shortHash}`);
       return entryPath;
     }
