@@ -20,6 +20,8 @@ import {
 
 const TEST_DIR = './test-journal-output';
 
+let failures = 0;
+
 console.log('Testing Journal Manager...\n');
 
 // Test 1: Format timestamp
@@ -110,6 +112,7 @@ try {
 } catch (error) {
   console.error('Save test failed:', error.message);
   console.error(error.stack);
+  failures++;
 }
 
 // Test 5: Discover reflections
@@ -155,6 +158,7 @@ This one should be outside the time window and not discovered.
 } catch (error) {
   console.error('Discovery test failed:', error.message);
   console.error(error.stack);
+  failures++;
 }
 
 // Test 6: Empty reflections directory
@@ -168,6 +172,7 @@ try {
   console.log('');
 } catch (error) {
   console.error('Empty directory test failed:', error.message);
+  failures++;
 }
 
 // Test 7: Exact hash dedup (existing behavior)
@@ -210,6 +215,7 @@ try {
 } catch (error) {
   console.error('Hash dedup test failed:', error.message);
   console.error(error.stack);
+  failures++;
 }
 
 // Test 8: Semantic dedup (cherry-pick/rebase scenario)
@@ -262,6 +268,7 @@ try {
 } catch (error) {
   console.error('Semantic dedup test failed:', error.message);
   console.error(error.stack);
+  failures++;
 }
 
 // Test 9: Same message, different timestamp (should NOT be suppressed)
@@ -305,6 +312,7 @@ try {
 } catch (error) {
   console.error('False positive test failed:', error.message);
   console.error(error.stack);
+  failures++;
 }
 
 // Cleanup
@@ -316,4 +324,9 @@ try {
   console.error('Cleanup failed:', error.message);
 }
 
-console.log('\n✅ All journal manager tests completed!');
+if (failures > 0) {
+  console.error(`\n❌ ${failures} test(s) failed!`);
+  process.exit(1);
+} else {
+  console.log('\n✅ All journal manager tests completed!');
+}
