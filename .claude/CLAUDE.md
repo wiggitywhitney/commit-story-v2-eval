@@ -72,18 +72,6 @@ Every PR must go through CodeRabbit review before merge. This is a hard requirem
 
 **Note:** This repo has no CI pipeline. Don't wait for CI checks - just wait for CodeRabbit review, then merge.
 
-## Code Style Guidelines
-
-**Code Block Language Identifiers:**
-- Always use `text` (not empty) for plain text code blocks in markdown
-- Example formats in documentation should use appropriate language identifiers:
-  - `bash` for shell commands
-  - `javascript` for JS code
-  - `json` for JSON examples
-  - `text` for plain text, commit message formats, or generic examples
-
-This prevents CodeRabbit from flagging missing language identifiers on every PR.
-
 ## Package Distribution (Lean Packaging)
 
 This project will be distributed as an npm package. Avoid bloat:
@@ -169,7 +157,7 @@ Secrets are configured in `.vals.yaml` (gitignored). See `.vals.yaml` for the fu
 ## Architecture
 
 Key data flow:
-```
+```text
 Git Hook → Collectors (git, claude) → Context Integration → Filtering → AI Generation → Journal Save
 ```
 
