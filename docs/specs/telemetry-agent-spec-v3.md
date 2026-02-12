@@ -605,7 +605,9 @@ The agent can extend the schema, but must follow existing patterns:
 
 **Trusted Allowlist (PoC)**
 
-Common OTel JS instrumentation packages, sourced from `@opentelemetry/auto-instrumentations-node`. Note: this allowlist should be reviewed quarterly against the upstream package list, as packages may be deprecated or replaced (see Fastify below).
+Common OTel JS instrumentation packages. Note: this allowlist should be reviewed quarterly against upstream package lists, as packages may be deprecated or replaced (see Fastify below).
+
+**Core (from `@opentelemetry/auto-instrumentations-node`)**
 
 | Framework/Library | Instrumentation Package |
 |-------------------|------------------------|
@@ -622,10 +624,40 @@ Common OTel JS instrumentation packages, sourced from `@opentelemetry/auto-instr
 | `mongoose` | `@opentelemetry/instrumentation-mongoose` |
 | `kafkajs` | `@opentelemetry/instrumentation-kafkajs` |
 | `pino` | `@opentelemetry/instrumentation-pino` |
+
+**OpenLLMetry — LLM Providers (from `@traceloop/node-server-sdk`)**
+
+| Framework/Library | Instrumentation Package |
+|-------------------|------------------------|
 | `@anthropic-ai/sdk` | `@traceloop/instrumentation-anthropic` |
 | `openai` | `@traceloop/instrumentation-openai` |
+| `@aws-sdk/client-bedrock-runtime` | `@traceloop/instrumentation-bedrock` |
+| `@google-cloud/vertexai` | `@traceloop/instrumentation-vertexai` |
+| `cohere-ai` | `@traceloop/instrumentation-cohere` |
+| `together-ai` | `@traceloop/instrumentation-together` |
 
-**Note on OpenLLMetry packages:** The `@traceloop/instrumentation-*` packages are from OpenLLMetry, OTel extensions for LLM observability created by Traceloop. Their work contributed to the official GenAI semantic conventions now in OTel. These packages provide auto-instrumentation for LLM SDK calls (Anthropic, OpenAI, etc.) and emit `gen_ai.*` semconv attributes. For codebases with LLM integrations, these provide the same benefits as other auto-instrumentation libraries — no manual span wrapping needed for LLM calls.
+**OpenLLMetry — Frameworks**
+
+| Framework/Library | Instrumentation Package |
+|-------------------|------------------------|
+| `langchain` / `@langchain/*` | `@traceloop/instrumentation-langchain` |
+| `llamaindex` | `@traceloop/instrumentation-llamaindex` |
+
+**OpenLLMetry — Protocols**
+
+| Framework/Library | Instrumentation Package |
+|-------------------|------------------------|
+| `@modelcontextprotocol/sdk` | `@traceloop/instrumentation-mcp` |
+
+**OpenLLMetry — Vector Databases**
+
+| Framework/Library | Instrumentation Package |
+|-------------------|------------------------|
+| `@pinecone-database/pinecone` | `@traceloop/instrumentation-pinecone` |
+| `chromadb` | `@traceloop/instrumentation-chromadb` |
+| `@qdrant/js-client-rest` | `@traceloop/instrumentation-qdrant` |
+
+**Note on OpenLLMetry packages:** The `@traceloop/instrumentation-*` packages are from [OpenLLMetry](https://github.com/traceloop/openllmetry-js), OTel extensions for LLM observability created by Traceloop. Their work contributed to the official GenAI semantic conventions now in OTel. These packages provide auto-instrumentation for LLM/AI SDK calls and emit `gen_ai.*` semconv attributes. All 12 JS/TS packages are also bundled in `@traceloop/node-server-sdk`. For codebases with LLM integrations, these provide the same benefits as other auto-instrumentation libraries — no manual span wrapping needed.
 
 **npm Registry Search (Fallback)**
 
@@ -633,7 +665,7 @@ If a file imports a framework not in the allowlist, the agent queries npm as a d
 
 **Future:** Vector database synced with OTel ecosystem
 
-Sources: [@opentelemetry/auto-instrumentations-node](https://github.com/open-telemetry/opentelemetry-js-contrib/tree/main/packages/auto-instrumentations-node)
+Sources: [@opentelemetry/auto-instrumentations-node](https://github.com/open-telemetry/opentelemetry-js-contrib/tree/main/packages/auto-instrumentations-node), [openllmetry-js](https://github.com/traceloop/openllmetry-js)
 
 ### Schema Updates for Libraries
 When a library is added, the schema should reference what it produces:
