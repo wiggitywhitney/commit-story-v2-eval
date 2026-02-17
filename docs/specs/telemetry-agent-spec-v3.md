@@ -1,8 +1,8 @@
 # Telemetry Agent Specification
 
-**Status:** Draft v3
+**Status:** Draft v3.1
 **Created:** 2026-02-05
-**Updated:** 2026-02-07
+**Updated:** 2026-02-16
 **Purpose:** AI agent that auto-instruments TypeScript code with OpenTelemetry based on a Weaver schema
 
 ## Revision History
@@ -12,6 +12,7 @@
 | v1 | 2026-02-05 | Initial draft |
 | v2 | 2026-02-06 | Incorporated consolidated technical review (Michael Rishi Forrester + Claude). Resolved Q5 (framework choice). Added research spikes, file revert protocol, Coordinator-managed SDK writes, dependency installation workflow, variable shadowing checks, periodic schema checkpoints, configurable limits, in-memory results, span density guardrails, and fix loop ceilings. |
 | v3 | 2026-02-07 | **Instrumentation model:** Replaced hardcoded span caps with priority-based hierarchy and review sensitivity. Restored rich LibraryRequirement objects. Added cost visibility. **Interfaces:** Moved CLI and GitHub Action to PoC scope. Added Coordinator programmatic API with progress callbacks. **Execution:** Added dry run mode, exclude patterns, config validation (Zod). **Result enrichment:** Added per-file agent notes, schema hash tracking, agent version tagging. **Spec hygiene:** Moved testCommand env note to Configuration. Added technical explanation for uncovered async patterns. Added RS2 (Weaver Integration Approach) and renumbered fix loop design to RS3; replaced "start with CLI" implementation-time decision with research spike. |
+| v3.1 | 2026-02-16 | **Cost visibility:** Redesigned pre-run cost from post-hoc PR-only to configurable pre-run confirmation step. Renamed from "estimate" to "ceiling" — without historical data, these are ceilings not estimates. Simplified `CostCeiling` to single `maxTokensCeiling` (tighter ceilings are future work). Added `onCostCeilingReady` callback, `confirmEstimate` config option (CLI only), CLI `--yes`/`-y` flag, exit code 3 (user abort), and dry run prompt guidance. **MCP:** Added `get-cost-ceiling` tool to handle confirmation at the tool boundary (MCP tools are request-response, can't pause mid-call). Token usage estimation and tighter ceilings added to Out of Scope (Future). Ceiling still appears in PR summary alongside actuals. **Correctness:** Added explicit schema re-resolution between files (agents must see prior agents' extensions). Clarified checkpoint failure behavior: stop processing but still create PR with partial results. Added dry run skips periodic checkpoints. **Precision:** Specified `maxTokensPerFile` enforcement mechanism (Coordinator sums API response metadata). Added schema hash canonicalization requirement. Added squash merge guidance for per-file commits. |
 
 ---
 
@@ -49,26 +50,25 @@ Before implementation begins, three research spikes are required. These are time
 
 **Scope:** Focus on TypeScript instrumentation specifically. Evaluate against the patterns in this spec (wrapping functions with spans, adding imports, try/catch/finally blocks).
 
-### RS2: Weaver Integration Approach
+### RS2: Weaver Integration Capabilities
 
-**Goal:** Determine whether the agent should integrate with Weaver via CLI commands, the Weaver MCP server (`weaver registry mcp`), or a hybrid approach. This decision is upstream of RS3 (validation/fix loop design) because it determines what validation capabilities are available.
+**Goal:** Map the capabilities, constraints, and integration characteristics of Weaver CLI and the Weaver MCP server. This spike produces a capability matrix that RS3 consumes when designing the validation loop — it does not make an integration recommendation. The integration decision belongs in RS3, where the actual validation needs are understood.
 
 **Deliverable:** A document covering:
 - Capability comparison: what each approach can and can't do (notably: the MCP server provides fuzzy search with relevance scoring that has no CLI equivalent, and ad-hoc `live_check` that accepts JSON samples per call rather than requiring an OTLP stream)
 - Architectural implications: the Coordinator would need to maintain an MCP client connection to Weaver alongside its own MCP server for Claude Code — evaluate whether this adds meaningful complexity or is straightforward
 - Performance characteristics: the MCP server resolves the registry once into memory with indexed data structures; the CLI re-loads and re-resolves on every call. Quantify the impact for a typical run (periodic checkpoints, per-file fix loops with up to 3 retries each, 50-file runs)
-- Whether the MCP server's ad-hoc `live_check` (per-call JSON sample validation) could enable per-file runtime validation instead of only end-of-run validation, and what that would change about the validation architecture
+- What the MCP server's ad-hoc `live_check` (per-call JSON sample validation) makes possible — document its capabilities so RS3 can evaluate whether per-file runtime validation changes the fix loop structure
 - Whether fuzzy search improves the agent's ability to discover semconv attributes during the attribute priority chain (step 1: check OTel semantic conventions)
 - Whether `weaver registry diff --baseline-registry` accepts the output of `weaver registry resolve` as its baseline input, or requires a copy of the source registry directory. This affects the Coordinator's snapshot strategy for periodic checkpoints, dry run output, and PR summary generation — all three features depend on this command.
-- A concrete recommendation: CLI, MCP, or hybrid (e.g., MCP for search/lookup/live_check, CLI for `registry check` and `registry diff`)
 
 **Context:** Weaver v0.21.2 introduced `weaver registry mcp` — an MCP server that imports Weaver's internal Rust crates directly, loads and resolves the entire registry into memory once at startup, and serves 7 tools: `search` (fuzzy text search with relevance scoring), `get_attribute`, `get_metric`, `get_span`, `get_event`, `get_entity` (O(1) lookups from in-memory indexes), and `live_check` (validates telemetry samples against the registry through Weaver's full advisor pipeline). Weaver v0.21.2 also added `weaver serve` (REST API + web UI) which could help during development/debugging.
 
-**Scope:** Focus on PoC needs. The recommendation should consider what's simplest to implement now while not closing doors for future optimization.
+**Scope:** Focus on PoC needs. Document what's available without bias toward any particular integration approach — the findings should stand on their own so RS3 can make an informed design decision.
 
 ### RS3: Validation/Fix Loop Design
 
-**Goal:** Understand how existing AI coding tools handle the "generate → validate → fix → retry" cycle, and design the fix loop mechanics for this agent.
+**Goal:** Understand how existing AI coding tools handle the "generate → validate → fix → retry" cycle, design the fix loop mechanics for this agent, and determine the Weaver integration approach based on what the fix loop actually needs.
 
 **Deliverable:** A document covering:
 - How tools like Cursor, Aider, Claude Code, and similar handle iterative code correction
@@ -77,7 +77,7 @@ Before implementation begins, three research spikes are required. These are time
 - Recommended max retry counts and when to bail out
 - Whether the fix loop should be a single multi-turn conversation or separate API calls
 - Concrete fix loop design recommendation for this agent
-- How the Weaver integration approach (determined by RS2) affects fix loop design — e.g., if MCP enables per-file runtime validation, does that change the fix loop structure?
+- Based on the fix loop design and the RS2 capability matrix, determine which Weaver integration points the validation loop needs — this produces the Weaver integration recommendation (CLI, MCP, or both) grounded in actual validation requirements
 
 **Implementation-time decision:** The fix loop can be modeled as either (a) a single multi-turn conversation where each retry adds the error to context, or (b) separate API calls where each retry starts fresh with just the file, schema, and error. Option (a) preserves what the agent tried; option (b) prevents context bloat. RS3 should evaluate which works better empirically.
 
@@ -121,6 +121,8 @@ The system has a **Coordinator** (deterministic script) that manages workflow an
 
 **What "fresh instance" means:** A new LLM API call with a clean context. The context contains only: the system prompt, the resolved Weaver schema, the single file to instrument, and trace context (trace ID + parent span ID for observability). No conversation history, result data, or context from previous files carries over. This is the key mechanism that prevents quality degradation across files — each file gets the agent's full attention as if it were the only file. (Trace context is operational metadata, not task context — it doesn't undermine the quality argument.)
 
+**Schema re-resolution:** The Coordinator re-resolves the Weaver schema (`weaver registry resolve`) before each file, not once at startup. Since agents can extend the schema and their changes are committed to the feature branch after each successful file (step 4e), subsequent agents must see those extensions to avoid creating duplicate attributes or conflicting span IDs. The performance cost is real (resolution involves fetching and resolving the semconv dependency), but correctness requires it.
+
 This separation solves the "scope problem": discovery happens once in init, instrumentation follows established patterns. The Coordinator handles the mechanical orchestration.
 
 ### Coordinator Programmatic API
@@ -132,7 +134,14 @@ This separation solves the "scope problem": discovery happens once in init, inst
 The Coordinator accepts an optional `callbacks` object for progress reporting:
 
 ```typescript
+interface CostCeiling {
+  fileCount: number;
+  totalFileSizeBytes: number;
+  maxTokensCeiling: number;          // fileCount * maxTokensPerFile (theoretical worst case)
+}
+
 interface CoordinatorCallbacks {
+  onCostCeilingReady?: (ceiling: CostCeiling) => boolean | void;
   onFileStart?: (path: string, index: number, total: number) => void;
   onFileComplete?: (result: FileResult, index: number, total: number) => void;
   onSchemaCheckpoint?: (filesProcessed: number, passed: boolean) => boolean | void;
@@ -141,6 +150,8 @@ interface CoordinatorCallbacks {
   onRunComplete?: (results: FileResult[]) => void;
 }
 ```
+
+The `onCostCeilingReady` callback fires after file globbing but before any agent processing begins, **only when `confirmEstimate` is `true`**. When `confirmEstimate` is `false`, the Coordinator still calculates the ceiling internally (for the PR summary) but does not invoke the callback. If the callback returns `false`, the Coordinator aborts the run. Returning `true` or `void` (or not providing the callback) proceeds normally.
 
 Each interface layer wires these to its own output mechanism: the CLI prints progress lines to stderr, the MCP server sends structured progress events, and the GitHub Action uses `core.info()` step annotations. The Coordinator itself never writes to stdout/stderr directly — all user-facing output flows through callbacks or the final result object. This keeps the Coordinator testable and interface-agnostic.
 
@@ -183,13 +194,24 @@ The principle: if the error means subsequent work will be invalid or wasted, abo
 
 **Call chains:** Claude Code invokes MCP server tools → MCP server wraps the Coordinator → Coordinator runs the deterministic workflow (branch, file iteration, validation, PR) and spawns fresh Instrumentation Agent instances for each file. The MCP server is a thin interface layer; the Coordinator is where the orchestration logic lives. The CLI and GitHub Action follow the same pattern: parse their respective inputs into a Coordinator config object, call the Coordinator function, and format the result for their output channel.
 
+#### MCP Server
+
+The MCP server exposes two tools for the instrumentation workflow:
+
+- **`get-cost-ceiling`** — Takes the same path and config as `instrument`. Runs file globbing and calculates the cost ceiling (no LLM calls, no git operations). Returns a `CostCeiling` object. This is cheap and fast.
+- **`instrument`** — Runs the full instrumentation workflow. The MCP server calls the Coordinator with `confirmEstimate: false` since the confirmation happens at the tool boundary, not inside the Coordinator.
+
+MCP tools are request-response — there's no way to pause mid-tool-call for user input. The two-tool split moves the confirmation step to where MCP can handle it: between tool calls. Claude Code naturally chains tool calls based on responses, so the expected flow is: call `get-cost-ceiling`, present results to user, user confirms, call `instrument`. The tool description for `instrument` should guide Claude Code to call `get-cost-ceiling` first.
+
+This means the `confirmEstimate` config option is effectively irrelevant for the MCP interface — the MCP server always passes `false` to the Coordinator and handles the confirmation flow through its own tool boundary. This is consistent with the principle that each interface layer handles its own UX.
+
 #### CLI
 
-A thin wrapper that parses command-line arguments into a Coordinator config object. Uses `yargs` or manual `process.argv` parsing. Supports `--dry-run`, `--output json` (dumps raw result array for piping), and `--verbose`/`--debug` flags. Exit codes: 0 = all files succeeded, 1 = partial success (some files failed), 2 = total failure. The CLI is the reference interface for testing and scripting.
+A thin wrapper that parses command-line arguments into a Coordinator config object. Uses `yargs` or manual `process.argv` parsing. Supports `--dry-run`, `--output json` (dumps raw result array for piping), `--yes`/`-y` (skip cost ceiling confirmation), and `--verbose`/`--debug` flags. When `confirmEstimate` is enabled and `--yes` is not passed, the CLI prints the cost ceiling to stderr and prompts "Proceed? [y/N]". In dry run mode, the prompt should communicate that tokens are still consumed even though no persistent changes are made. Exit codes: 0 = all files succeeded, 1 = partial success (some files failed), 2 = total failure, 3 = aborted by user (declined cost ceiling). The CLI is the reference interface for testing and scripting.
 
 #### GitHub Action
 
-An `action.yml` that runs the CLI in a GitHub Actions runner. Setup steps: `actions/setup-node@v4`, npm install, install Weaver CLI. Uses `${{ github.token }}` for PR creation (no additional auth configuration needed). Default trigger: `workflow_dispatch` (manual). Future triggers (on push, on PR) are configuration, not code changes. The Action posts the PR summary as a step output and optionally as a PR comment.
+An `action.yml` that runs the CLI in a GitHub Actions runner. Setup steps: `actions/setup-node@v4`, npm install, install Weaver CLI. Uses `${{ github.token }}` for PR creation (no additional auth configuration needed). Default trigger: `workflow_dispatch` (manual). Future triggers (on push, on PR) are configuration, not code changes. The Action passes `--yes` to the CLI (non-interactive — no confirmation prompt) but logs the cost ceiling via `core.info()` for workflow visibility. The Action posts the PR summary as a step output and optionally as a PR comment.
 
 ### Technology Stack (PoC)
 
@@ -208,7 +230,7 @@ An `action.yml` that runs the CLI in a GitHub Actions runner. Setup steps: `acti
 
 **Note on Weaver MCP server:** Weaver v0.21.2 introduced `weaver registry mcp` — an MCP server providing search, get, and live-check tools directly. Since the PoC architecture already uses MCP (Claude Code → MCP server → Coordinator), the agent could interact with Weaver's native MCP server for schema operations instead of shelling out to CLI commands. Weaver v0.21.2 also added `weaver serve` (REST API + web UI) which could help during development/debugging.
 
-**Weaver integration approach:** Determined by RS2 research spike. The CLI approach (`weaver registry check`, `weaver registry resolve`, `weaver registry diff`) shells out and parses output. The MCP server approach (`weaver registry mcp`) provides in-memory resolution, fuzzy search, and per-call live validation. See RS2 for the full evaluation — the choice affects validation architecture, attribute discovery, and performance characteristics.
+**Weaver integration approach:** Determined by the RS2 + RS3 research spikes. RS2 maps the capabilities of both the CLI (`weaver registry check`, `weaver registry resolve`, `weaver registry diff`) and the MCP server (`weaver registry mcp`, providing in-memory resolution, fuzzy search, and per-call live validation). RS3 then determines which integration points the validation loop needs, producing the final integration recommendation grounded in actual requirements.
 
 ---
 
@@ -267,6 +289,9 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 │  1. Validate config (Zod schema)                                │
 │  2. Create feature branch (skipped in dry run)                  │
 │  3. Glob for files to process, apply exclude patterns           │
+│  3b. Calculate cost ceiling (file count, sizes, token ceiling)  │
+│      → If confirmEstimate enabled, surface via callback          │
+│      → If user declines, abort run                              │
 │  4. For each file:                                              │
 │     a. Snapshot file (copy for revert on failure)               │
 │     b. Spawn Instrumentation Agent (fresh instance)             │
@@ -282,7 +307,9 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 │  6. Run end-of-run validation (tests + Weaver live-check)       │
 │  7. Create PR with summary (category breakdown + cost data)     │
 │  Note: In dry run, Coordinator reverts all files after agent   │
-│  runs (keeping results) and skips steps 2, 5, 6, 7            │
+│  runs (keeping results) and skips steps 2, 4f, 5, 6, 7.      │
+│  Cost ceiling (3b) still applies in dry run — agents still     │
+│  make LLM calls and incur token costs.                         │
 │                                                                 │
 │  INSTRUMENTATION AGENT (per file, fresh instance):              │
 │  1. Read config → get schema path                               │
@@ -337,7 +364,7 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 - **Schema changes propagate:** via git commits on feature branch
 - **SDK init file:** written once by Coordinator after all agents complete
 - **Dependency installation:** one bulk `npm install` by Coordinator after all agents complete
-- **Single PR at end:** contains all instrumented files, schema updates, SDK init changes, and package.json updates
+- **Single PR at end:** contains all instrumented files, schema updates, SDK init changes, and package.json updates. The per-file commits (one per successful file) are operational artifacts for revert granularity during the run — the PR should be squash-merged, with the PR description serving as the sole record of per-file detail
 - **Configurable file limit:** Default 50 files per run (configurable via `maxFilesPerRun`). This is a cost/time guardrail, not an architectural constraint — the Coordinator's design (centralized SDK writes, in-memory results, independent agents) supports higher file counts without structural changes. If the glob returns more files than the limit, the Coordinator fails with an error suggesting the user adjust the limit or target a subdirectory.
 
 ### File Revert Protocol
@@ -350,7 +377,7 @@ Implementation: The Coordinator copies the file (and its corresponding schema st
 
 To catch schema drift early instead of discovering it only at end-of-run, the Coordinator runs `weaver registry check` every `schemaCheckpointInterval` files (default: 5). Alongside validation, the Coordinator runs `weaver registry diff --baseline-registry <snapshot> -r ./telemetry/registry --diff-format json` to capture exactly what changed since the last checkpoint. This makes checkpoint output actionable — not just "valid/invalid" but "here's what was added."
 
-If a checkpoint fails, the Coordinator aborts the run by default. It reports which files were successfully processed before the failure and which files were processed since the last successful checkpoint (the blast radius). Interface layers can override this behavior by providing an `onSchemaCheckpoint` callback that returns `true` to continue processing despite the failure; returning `false` or `void` (or not providing the callback) aborts. This keeps the default safe for non-interactive contexts (CLI pipes, GitHub Actions, MCP server) while allowing interactive callers to offer a "fix and continue" option.
+If a checkpoint fails, the Coordinator stops processing new files by default. Files committed before the failing checkpoint are valid (they passed their own validations and all previous checkpoints), so the Coordinator still creates a PR with the partial results — the PR summary notes the checkpoint failure and identifies which files were processed since the last successful checkpoint (the blast radius). This is consistent with the fail-forward philosophy: don't waste work that already succeeded. Interface layers can override this behavior by providing an `onSchemaCheckpoint` callback that returns `true` to continue processing despite the failure; returning `false` or `void` (or not providing the callback) stops processing.
 
 ### SDK Init File Parsing Scope
 
@@ -605,16 +632,18 @@ The agent can extend the schema, but must follow existing patterns:
 
 **Trusted Allowlist (PoC)**
 
-Common OTel JS instrumentation packages, sourced from `@opentelemetry/auto-instrumentations-node`. Note: this allowlist should be reviewed quarterly against the upstream package list, as packages may be deprecated or replaced (see Fastify below).
+Common OTel JS instrumentation packages. Note: this allowlist should be reviewed quarterly against upstream package lists, as packages may be deprecated or replaced (see Fastify below).
+
+**Core (from `@opentelemetry/auto-instrumentations-node`)**
 
 | Framework/Library | Instrumentation Package |
 |-------------------|------------------------|
 | `http` / `https` | `@opentelemetry/instrumentation-http` |
 | `express` | `@opentelemetry/instrumentation-express` |
 | `pg` | `@opentelemetry/instrumentation-pg` |
-| `mysql` / `mysql2` | `@opentelemetry/instrumentation-mysql` / `mysql2` |
+| `mysql` / `mysql2` | `@opentelemetry/instrumentation-mysql` / `@opentelemetry/instrumentation-mysql2` |
 | `mongodb` | `@opentelemetry/instrumentation-mongodb` |
-| `redis` / `ioredis` | `@opentelemetry/instrumentation-redis` / `ioredis` |
+| `redis` / `ioredis` | `@opentelemetry/instrumentation-redis` / `@opentelemetry/instrumentation-ioredis` |
 | `grpc` / `@grpc/grpc-js` | `@opentelemetry/instrumentation-grpc` |
 | `koa` | `@opentelemetry/instrumentation-koa` |
 | `fastify` | `@fastify/otel` (note: `@opentelemetry/instrumentation-fastify` is deprecated as of auto-instrumentations-node v0.68.0, Feb 2026) |
@@ -622,10 +651,40 @@ Common OTel JS instrumentation packages, sourced from `@opentelemetry/auto-instr
 | `mongoose` | `@opentelemetry/instrumentation-mongoose` |
 | `kafkajs` | `@opentelemetry/instrumentation-kafkajs` |
 | `pino` | `@opentelemetry/instrumentation-pino` |
+
+**OpenLLMetry — LLM Providers (from `@traceloop/node-server-sdk`)**
+
+| Framework/Library | Instrumentation Package |
+|-------------------|------------------------|
 | `@anthropic-ai/sdk` | `@traceloop/instrumentation-anthropic` |
 | `openai` | `@traceloop/instrumentation-openai` |
+| `@aws-sdk/client-bedrock-runtime` | `@traceloop/instrumentation-bedrock` |
+| `@google-cloud/vertexai` | `@traceloop/instrumentation-vertexai` |
+| `cohere-ai` | `@traceloop/instrumentation-cohere` |
+| `together-ai` | `@traceloop/instrumentation-together` |
 
-**Note on OpenLLMetry packages:** The `@traceloop/instrumentation-*` packages are from OpenLLMetry, OTel extensions for LLM observability created by Traceloop. Their work contributed to the official GenAI semantic conventions now in OTel. These packages provide auto-instrumentation for LLM SDK calls (Anthropic, OpenAI, etc.) and emit `gen_ai.*` semconv attributes. For codebases with LLM integrations, these provide the same benefits as other auto-instrumentation libraries — no manual span wrapping needed for LLM calls.
+**OpenLLMetry — Frameworks**
+
+| Framework/Library | Instrumentation Package |
+|-------------------|------------------------|
+| `langchain` / `@langchain/*` | `@traceloop/instrumentation-langchain` |
+| `llamaindex` | `@traceloop/instrumentation-llamaindex` |
+
+**OpenLLMetry — Protocols**
+
+| Framework/Library | Instrumentation Package |
+|-------------------|------------------------|
+| `@modelcontextprotocol/sdk` | `@traceloop/instrumentation-mcp` |
+
+**OpenLLMetry — Vector Databases**
+
+| Framework/Library | Instrumentation Package |
+|-------------------|------------------------|
+| `@pinecone-database/pinecone` | `@traceloop/instrumentation-pinecone` |
+| `chromadb` | `@traceloop/instrumentation-chromadb` |
+| `@qdrant/js-client-rest` | `@traceloop/instrumentation-qdrant` |
+
+**Note on OpenLLMetry packages:** The `@traceloop/instrumentation-*` packages are from [OpenLLMetry](https://github.com/traceloop/openllmetry-js), OTel extensions for LLM observability created by Traceloop. Their work contributed to the official GenAI semantic conventions now in OTel. These packages provide auto-instrumentation for LLM/AI SDK calls and emit `gen_ai.*` semconv attributes. All 12 JS/TS packages are also bundled in `@traceloop/node-server-sdk`. For codebases with LLM integrations, these provide the same benefits as other auto-instrumentation libraries — no manual span wrapping needed.
 
 **npm Registry Search (Fallback)**
 
@@ -633,7 +692,7 @@ If a file imports a framework not in the allowlist, the agent queries npm as a d
 
 **Future:** Vector database synced with OTel ecosystem
 
-Sources: [@opentelemetry/auto-instrumentations-node](https://github.com/open-telemetry/opentelemetry-js-contrib/tree/main/packages/auto-instrumentations-node)
+Sources: [@opentelemetry/auto-instrumentations-node](https://github.com/open-telemetry/opentelemetry-js-contrib/tree/main/packages/auto-instrumentations-node), [openllmetry-js](https://github.com/traceloop/openllmetry-js)
 
 ### Schema Updates for Libraries
 When a library is added, the schema should reference what it produces:
@@ -681,7 +740,7 @@ Each check runs in a loop: validate → fix errors → retry until clean or max 
 
 Order matters: syntax first (must compile), then lint, then schema.
 
-**Fix loop limits:** The agent retries up to `maxFixAttempts` (default: 3) per validation stage. If the agent cannot produce clean code within the limit, it returns a `"failed"` status and the Coordinator reverts the file. The `maxTokensPerFile` budget (default: 50,000) provides a hard ceiling on total token usage per file across all attempts.
+**Fix loop limits:** The agent retries up to `maxFixAttempts` (default: 3) per validation stage. If the agent cannot produce clean code within the limit, it returns a `"failed"` status and the Coordinator reverts the file. The `maxTokensPerFile` budget (default: 50,000) provides a hard ceiling on total token usage per file across all attempts. The Coordinator enforces this by summing `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` from each API call's response metadata during the fix loop. If cumulative usage exceeds the budget, the Coordinator stops retries and treats the file as failed, regardless of remaining `maxFixAttempts`.
 
 **Variable shadowing check:** Before inserting new variables (`span`, `tracer`, etc.), the agent uses ts-morph's scope analysis (TypeScript binder access) to check for existing variables with the same name in the target scope. If a collision is detected, the agent uses suffixed names (`otelSpan`, `otelTracer`) or reports the collision and skips instrumentation for that function. This check happens before the validation loop — it's a pre-condition, not something that gets "fixed" in a retry.
 
@@ -853,7 +912,7 @@ The agent reports the full library requirement (package name + import name) beca
 
 The `notes` field lets the agent explain judgment calls — e.g., "skipped processPayment because it's already wrapped in a span from an outer function" or "this file has unusually deep nesting; consider refactoring before instrumenting." These notes flow into the PR summary and make the PR reviewable by someone who wasn't watching the agent work.
 
-Schema hashes let the Coordinator trace exactly which agent introduced a schema change. If end-of-run Weaver validation fails, the Coordinator can identify the file whose schema modification caused the failure by comparing hashes across the result sequence. This is a cheap diagnostic — just a fast hash of the resolved schema JSON — not a full diff.
+Schema hashes let the Coordinator trace exactly which agent introduced a schema change. If end-of-run Weaver validation fails, the Coordinator can identify the file whose schema modification caused the failure by comparing hashes across the result sequence. This is a cheap diagnostic — just a fast hash of the resolved schema JSON — not a full diff. The hash should be computed on canonicalized JSON (sorted keys, no whitespace) to avoid spurious differences from non-deterministic key ordering in Weaver's output.
 
 The `agentVersion` field tracks which version of the agent (or system prompt) produced each result. During prompt iteration — especially during the RS1 research spike — this lets you compare results across prompt versions and identify which changes improved or degraded output quality. Even a manually-bumped string (e.g., "v0.3-prompt-experiment") is useful. The Coordinator includes the agent version in the PR description.
 
@@ -907,7 +966,7 @@ The Coordinator renders results into the PR description as a human-readable summ
 - **Schema changes summary** — generated via `weaver registry diff --diff-format markdown`, showing all attributes, spans, and other telemetry objects added to the registry during the run. Gives reviewers a clear picture of schema evolution without inspecting registry YAML files directly.
 - **Review sensitivity annotations** — warnings or flags based on the configured sensitivity level (see Review Sensitivity under What Gets Instrumented)
 - **Agent notes** — judgment call explanations from each file's result, surfaced inline with the per-file summary
-- **Token usage data** — pre-run estimate and actual token usage from `gen_ai.usage.*` attributes in agent self-instrumentation spans (see Cost Visibility under Configuration)
+- **Token usage data** — pre-run ceiling (based on file count and sizes) alongside actual token usage from `gen_ai.usage.*` attributes in agent self-instrumentation spans. The side-by-side comparison shows how conservative the ceiling was and helps calibrate expectations for future runs. (See Cost Visibility under Configuration.)
 - **Agent version** — which agent/prompt version produced the results (useful for comparing across prompt iterations)
 
 This builds trust with reviewers without polluting the git history with machine-readable artifacts.
@@ -944,6 +1003,7 @@ reviewSensitivity: moderate    # PR annotation strictness: strict (flag tier 3+)
 
 # Execution mode
 dryRun: false                  # true = run agents but revert all changes, output summary only (no branch, PR, or commits)
+confirmEstimate: true          # CLI only. true = print cost ceiling and prompt before processing. No effect on MCP (uses get-cost-ceiling tool) or GitHub Action (always --yes)
 
 # File filtering
 exclude:                        # Glob patterns to skip
@@ -968,6 +1028,7 @@ exclude:                        # Glob patterns to skip
 | Limits and guardrails | |
 | Review sensitivity | |
 | Execution mode (dry run) | |
+| Cost ceiling confirmation | |
 | File exclude patterns | |
 
 The config tells the agent **how to run**. The schema tells it **what telemetry looks like**.
@@ -979,6 +1040,8 @@ Note: OTLP endpoint for production is configured in the user's OTel SDK setup, n
 When `dryRun: true`, the Coordinator runs the full analysis pipeline — file globbing, agent spawning, result collection — but treats every file as a revert: each agent runs normally (transforms the file, extends the schema, returns its result), then the Coordinator restores the file from its snapshot instead of committing. No branch is created, no npm install runs, no PR is created. The Coordinator captures `weaver registry diff` output before reverting schema changes, so the dry run summary includes what schema extensions *would* have been made. The Coordinator then outputs the collected results as a summary (same format as the PR description). This reuses the existing snapshot/revert mechanism — dry run is just "revert every file regardless of success."
 
 This is useful during prompt tuning and calibration: you can run the agent against your codebase repeatedly without creating throwaway branches. The agents still make LLM API calls (and incur token costs), but no persistent filesystem or git state is modified.
+
+**Dry run skips periodic schema checkpoints.** Since schema changes are reverted after each file, checkpoints would validate a transient state that won't persist. The per-file validation chain (syntax → lint → Weaver static) still runs within each agent — that feedback is useful for the dry run summary.
 
 ### Exclude Patterns
 
@@ -994,7 +1057,15 @@ The Coordinator validates the config at startup using a Zod schema (or equivalen
 
 ### Cost Visibility
 
-The Coordinator should emit token usage data in the PR summary. With the configurable file limit and `maxTokensPerFile: 50000`, the theoretical ceiling is ~500K tokens per run at the default 50-file limit (lower in practice — most files won't hit the per-file ceiling). The Coordinator can calculate a pre-run estimate based on file count and file sizes, and report actual token usage (from `gen_ai.usage.*` attributes in agent self-instrumentation spans) in the PR description. This is informational — the file limit is the primary cost guard for the PoC.
+Cost visibility has two phases: a pre-run ceiling and post-run actuals. Both appear in the PR summary; the ceiling is additionally surfaced before the run begins when `confirmEstimate` is enabled.
+
+**Pre-run ceiling:** After file globbing (step 3b in the workflow), the Coordinator calculates a cost ceiling: `fileCount × maxTokensPerFile`. With `maxTokensPerFile: 50000` and the default 50-file limit, the worst-case ceiling is 2.5M tokens per run. Actual usage will be significantly lower — most files won't hit the per-file ceiling, and not all files will require fix loop retries. This is a ceiling, not an estimate: it's a simple, clearly-defined worst case. Tighter ceilings based on file sizes or historical data are future work (see Out of Scope).
+
+When `confirmEstimate: true`, the Coordinator fires the `onCostCeilingReady` callback, giving the interface layer an opportunity to surface the ceiling and request user confirmation before incurring token costs. If the user declines, the run aborts with no LLM calls made. When `confirmEstimate: false`, the ceiling is still calculated (it appears in the PR summary) but no confirmation is requested.
+
+**Post-run actuals:** After the run completes, the Coordinator reports actual token usage from `gen_ai.usage.*` attributes in agent self-instrumentation spans. The PR summary includes both the pre-run ceiling and actual usage side by side, so reviewers can see how actual usage compared to the ceiling.
+
+The `confirmEstimate` setting defaults to `true`. Interface-layer overrides: the CLI supports `--yes`/`-y` to skip the prompt (useful for scripting); the GitHub Action always passes `--yes` since it's non-interactive; the MCP server handles confirmation through its own two-tool flow (`get-cost-ceiling` then `instrument`) and passes `confirmEstimate: false` to the Coordinator. The file limit and `maxTokensPerFile` remain the primary cost guards — the ceiling confirmation is an additional layer of visibility, not the primary guardrail.
 
 ---
 
@@ -1251,6 +1322,8 @@ Four levers:
 - Backend verification (query observability platform)
 - Configurable instrumentation levels (dev-heavy vs production-selective — `instrumentationMode` config key reserved)
 - Parallel agent execution (architecture supports it; needs schema merge strategy)
+- Tighter cost ceilings (file-size-proportional ceilings that account for system prompt and schema overhead, more accurate than the current `fileCount × maxTokensPerFile` worst case)
+- Token usage estimation (heuristic-based estimates derived from historical ceiling-vs-actual data across runs, replacing conservative ceilings with realistic predictions)
 
 ---
 
