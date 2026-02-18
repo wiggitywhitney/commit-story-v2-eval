@@ -34,10 +34,10 @@ Research is complete. See `docs/research/testing-infrastructure-research.md` for
 - [x] Global deny list and permission allowlist configured and validated in `~/.claude/settings.json`
 - [x] Shared claude config repo exists with testing infrastructure
 - [x] Tiered deterministic hooks enforce verification at commit, push, and PR creation
-- [ ] Decision guide documents testing strategies for different project types
+- [x] Decision guide documents testing strategies for different project types
 - [x] `/verify` skill works for Node.js/TypeScript projects
+- [x] Testing design guidance (what/how to test) integrated into the decision guide and testing rules — enforceable rules are in hooks
 - [ ] CLAUDE.md template(s) provide project config and decision guide references (enforcement is via hooks, not CLAUDE.md rules)
-- [ ] Testing design guidance (what/how to test) integrated into the decision guide — enforceable rules are already in hooks
 - [ ] "Apply testing framework" PRDs exist in all active repos (commit-story-v2, cluster-whisperer, telemetry agent)
 
 ## Milestones
@@ -79,9 +79,11 @@ Repo created at [wiggitywhitney/claude-config](https://github.com/wiggitywhitney
 - [x] **`/verify` skill** — 5-phase verification loop (build → type check → lint → security → tests). Skill + deterministic scripts architecture. Three modes: quick, full, pre-pr. Tested in commit-story-v2. The skill is for ad-hoc interactive use; hooks handle enforcement.
 - [x] **Tiered PreToolUse hooks** — Three deterministic hooks running scripts directly (no skill invocation): commit (quick+lint: build, type check, lint), push (full: build, type check, lint, security, tests), PR creation (pre-pr: full + expanded security). All purely deterministic — this is the primary enforcement mechanism.
 - [x] **PostToolUse hook on `Write|Edit`** — Checks markdown files for bare code blocks. Replaces CLAUDE.md style rule with deterministic enforcement (zero context cost, 100% compliance).
-- [ ] **Testing decision guide** — Maps project types to testing strategies, includes design guidance on what/how to test (Milestone 2 in claude-config PRD #1). This is the main remaining intellectual work — hooks enforce *that* tests pass, the guide helps decide *what* to test.
-- [ ] **CLAUDE.md template(s)** — Starter templates with project config, decision guide references, and non-enforceable guidance (Milestone 3 in claude-config PRD #1). Scoped down from original — enforcement is via hooks, not CLAUDE.md rules.
+- [x] **Testing decision guide** — Maps project types to testing strategies, includes design guidance on what/how to test. Complete (Milestone 2 in claude-config PRD #1). Hooks enforce *that* tests pass; the guide helps decide *what* to test.
+- [x] **Testing rules** — Always/Never patterns for testing. Complete alongside decision guide (Milestone 2 in claude-config PRD #1).
+- [ ] **CLAUDE.md template(s)** — Starter templates based on refactored real config (Milestone 3 in claude-config PRD #1). Global `~/.claude/CLAUDE.md` audit done; project-level audits, templates, and per-language rule files (`rules/languages/`) still pending. Enforcement is via hooks, not CLAUDE.md rules.
 - [ ] **Permission profiles** — Reference settings.json for three trust levels (Milestone 3 in claude-config PRD #1)
+- [ ] **Commit message hook** — Blocks AI/Claude/Co-Authored-By references in commits (Milestone 3 in claude-config PRD #1, Decision 17)
 - [ ] **README** — How to use and apply the toolkit (Milestone 4 in claude-config PRD #1)
 
 **Done when**: Repo exists with all components, and the `/verify` skill has been tested in at least one real project.
@@ -93,7 +95,7 @@ Repo created at [wiggitywhitney/claude-config](https://github.com/wiggitywhitney
 
 Create "apply testing framework" PRDs in each active repo:
 
-- [ ] **commit-story-v2** (PRD #33) — Wire up shared config, write end-to-end tests for existing functionality, set up CI pipeline, decide LLM testing strategy
+- [x] **commit-story-v2** (PRD #33) — PRD created. Wire up shared config, write end-to-end tests for existing functionality, set up CI pipeline, decide LLM testing strategy.
 - [ ] **cluster-whisperer** — Wire up shared config, plan integration test strategy for K8s/vector DB interaction, set up CI
 - [ ] **Telemetry agent** — Wire up shared config, test script-orchestrated workflows, verify instrumentation output
 
@@ -160,4 +162,5 @@ Each PRD should reference the shared config repo and the testing decision guide 
 | 2026-02-11 | CLAUDE.md optimization | Removed code block style guidelines section — now enforced by PostToolUse hook. Reduces context window usage. |
 | 2026-02-14 | Milestone 3: Tiered hooks | Evolved from single commit hook to three tiered PreToolUse hooks: commit (quick+lint), push (full), PR (pre-pr). All purely deterministic — scripts only, no skill invocation. Hooks are now the primary enforcement mechanism; `/verify` skill is ad-hoc only. See claude-config Decisions 10-12. |
 | 2026-02-17 | PRD revision | Updated Milestone 3, success criteria, and Milestone 5 to reflect hooks-first reality. Testing rules merged into decision guide scope (enforceable rules are in hooks). CLAUDE.md templates scoped down (enforcement via hooks, not rules). |
+| 2026-02-18 | Milestone 3: Decision guide + testing rules complete | Synced with claude-config PRD #1. Milestone 2 (decision guide + testing rules) complete. Milestone 3 (CLAUDE.md templates + profiles) in progress — global CLAUDE.md audit done, per-repo audits and templates pending. New deliverables: commit message hook (Decision 17), dotfile overrides (Decision 16), per-language rules (Decision 13). Also marked PRD #33 as created in Milestone 4. |
 | | | |
