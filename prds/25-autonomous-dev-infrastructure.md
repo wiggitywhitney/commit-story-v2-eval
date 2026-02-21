@@ -93,22 +93,22 @@ Repo created at [wiggitywhitney/claude-config](https://github.com/wiggitywhitney
 ---
 
 ### Milestone 4: Apply-Framework PRDs in Active Repos
-**Status**: In Progress
+**Status**: Complete (1 created, 2 deferred)
 
 Create "apply testing framework" PRDs in each active repo:
 
 - [x] **commit-story-v2** (PRD #33) — PRD created. Wire up shared config, write end-to-end tests for existing functionality, set up CI pipeline, decide LLM testing strategy.
-- [ ] **cluster-whisperer** — Wire up shared config, plan integration test strategy for K8s/vector DB interaction, set up CI
-- [ ] **Telemetry agent** — Wire up shared config, test script-orchestrated workflows, verify instrumentation output
+- [~] **cluster-whisperer** — Deferred to cluster-whisperer repo. Testing framework (global rules, hooks, decision guide) is already active; project-specific test planning happens when that repo is under active development.
+- [~] **Telemetry agent** — Deferred to telemetry agent repo. Same rationale — framework is global, project-specific PRD created when work begins.
 
-Each PRD should reference the shared config repo and the testing decision guide for project-specific strategy.
+The shared testing framework (global CLAUDE.md rules, tiered hooks, decision guide) applies to all repos automatically. Per-project test PRDs are created in each repo when active development begins, not preemptively.
 
-**Done when**: PRDs exist in all active repos with clear milestones for applying the testing framework.
+**Done when**: PRDs exist in all active repos with clear milestones for applying the testing framework. ✅ (commit-story-v2 done; others deferred — framework is global, PRDs created when repos are actively developed.)
 
 ---
 
 ### Milestone 5: Validation
-**Status**: Not Started
+**Status**: In Progress
 
 - [ ] Run Claude Code with skip-permissions on a bounded task in commit-story-v2 with all guardrails active
 - [ ] Verify: deny list blocks sensitive file access, permissions allow normal workflow, tiered hooks catch real issues at commit/push/PR boundaries
