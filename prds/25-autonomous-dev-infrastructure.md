@@ -37,7 +37,7 @@ Research is complete. See `docs/research/testing-infrastructure-research.md` for
 - [x] Decision guide documents testing strategies for different project types
 - [x] `/verify` skill works for Node.js/TypeScript projects
 - [x] Testing design guidance (what/how to test) integrated into the decision guide and testing rules — enforceable rules are in hooks
-- [ ] CLAUDE.md template(s) provide project config and decision guide references (enforcement is via hooks, not CLAUDE.md rules)
+- [x] CLAUDE.md template(s) provide project config and decision guide references (enforcement is via hooks, not CLAUDE.md rules)
 - [ ] "Apply testing framework" PRDs exist in all active repos (commit-story-v2, cluster-whisperer, telemetry agent)
 
 ## Milestones
@@ -72,26 +72,28 @@ Configure `~/.claude/settings.json` with:
 ---
 
 ### Milestone 3: Shared Claude Config Repo (Layer 1)
-**Status**: In Progress
+**Status**: Complete
 
-Repo created at [wiggitywhitney/claude-config](https://github.com/wiggitywhitney/claude-config). Remaining work tracked in that repo's PRD #1.
+Repo created at [wiggitywhitney/claude-config](https://github.com/wiggitywhitney/claude-config). All work tracked in that repo's PRD #1, which is complete and archived.
 
 - [x] **`/verify` skill** — 5-phase verification loop (build → type check → lint → security → tests). Skill + deterministic scripts architecture. Three modes: quick, full, pre-pr. Tested in commit-story-v2. The skill is for ad-hoc interactive use; hooks handle enforcement.
 - [x] **Tiered PreToolUse hooks** — Three deterministic hooks running scripts directly (no skill invocation): commit (quick+lint: build, type check, lint), push (full: build, type check, lint, security, tests), PR creation (pre-pr: full + expanded security). All purely deterministic — this is the primary enforcement mechanism.
 - [x] **PostToolUse hook on `Write|Edit`** — Checks markdown files for bare code blocks. Replaces CLAUDE.md style rule with deterministic enforcement (zero context cost, 100% compliance).
-- [x] **Testing decision guide** — Maps project types to testing strategies, includes design guidance on what/how to test. Complete (Milestone 2 in claude-config PRD #1). Hooks enforce *that* tests pass; the guide helps decide *what* to test.
+- [x] **Testing decision guide** — Maps project types to testing strategies, includes design guidance on what/how to test (Milestone 2 in claude-config PRD #1). Hooks enforce *that* tests pass; the guide helps decide *what* to test.
 - [x] **Testing rules** — Always/Never patterns for testing. Complete alongside decision guide (Milestone 2 in claude-config PRD #1).
-- [ ] **CLAUDE.md template(s)** — Starter templates based on refactored real config (Milestone 3 in claude-config PRD #1). Global `~/.claude/CLAUDE.md` audit done; project-level audits, templates, and per-language rule files (`rules/languages/`) still pending. Enforcement is via hooks, not CLAUDE.md rules.
-- [ ] **Permission profiles** — Reference settings.json for three trust levels (Milestone 3 in claude-config PRD #1)
-- [ ] **Commit message hook** — Blocks AI/Claude/Co-Authored-By references in commits (Milestone 3 in claude-config PRD #1, Decision 17)
-- [ ] **README** — How to use and apply the toolkit (Milestone 4 in claude-config PRD #1)
+- [x] **CLAUDE.md template(s)** — General and Node.js/TypeScript templates (`templates/`), authoring guide (`guides/claude-md-guide.md`), per-language rule files in `rules/languages/` (TypeScript, JavaScript, Shell, Python placeholder, Go). Applied to 5 repos. Enforcement is via hooks, not CLAUDE.md rules. (Milestone 3 in claude-config PRD #1)
+- [x] **Permission profiles** — Guide with tier-down pattern from autonomous baseline (`guides/permission-profiles.md`). Decision 20 in claude-config PRD #1.
+- [x] **Commit message hook** — `check-commit-message.sh` blocks AI/Claude/Co-Authored-By references in commits (Milestone 3 in claude-config PRD #1, Decision 17)
+- [x] **Dotfile override hooks** — `.skip-branching`, `.skip-coderabbit` checks in existing hooks (Decision 16)
+- [x] **Test tier enforcement hooks** — Warn (not block) when unit/integration/e2e test tiers are missing. Respects `.skip-e2e` and `.skip-integration` dotfiles (Milestone 4 in claude-config PRD #1, Decision 18)
+- [x] **README** — Covers all deliverables with validated examples (Milestone 5 in claude-config PRD #1)
 
-**Done when**: Repo exists with all components, and the `/verify` skill has been tested in at least one real project.
+**Done when**: Repo exists with all components, and the `/verify` skill has been tested in at least one real project. ✅
 
 ---
 
 ### Milestone 4: Apply-Framework PRDs in Active Repos
-**Status**: Not Started
+**Status**: In Progress
 
 Create "apply testing framework" PRDs in each active repo:
 
@@ -163,4 +165,5 @@ Each PRD should reference the shared config repo and the testing decision guide 
 | 2026-02-14 | Milestone 3: Tiered hooks | Evolved from single commit hook to three tiered PreToolUse hooks: commit (quick+lint), push (full), PR (pre-pr). All purely deterministic — scripts only, no skill invocation. Hooks are now the primary enforcement mechanism; `/verify` skill is ad-hoc only. See claude-config Decisions 10-12. |
 | 2026-02-17 | PRD revision | Updated Milestone 3, success criteria, and Milestone 5 to reflect hooks-first reality. Testing rules merged into decision guide scope (enforceable rules are in hooks). CLAUDE.md templates scoped down (enforcement via hooks, not rules). |
 | 2026-02-18 | Milestone 3: Decision guide + testing rules complete | Synced with claude-config PRD #1. Milestone 2 (decision guide + testing rules) complete. Milestone 3 (CLAUDE.md templates + profiles) in progress — global CLAUDE.md audit done, per-repo audits and templates pending. New deliverables: commit message hook (Decision 17), dotfile overrides (Decision 16), per-language rules (Decision 13). Also marked PRD #33 as created in Milestone 4. |
+| 2026-02-21 | Milestone 3: Complete | claude-config PRD #1 is fully complete and archived. All deliverables done: CLAUDE.md templates (general + Node.js/TypeScript), per-language rules (TS, JS, Shell, Python, Go), permission profiles guide, commit message hook, dotfile overrides, test tier enforcement hooks, README with validated examples. PRD #8 (Go verification) also completed, extending hooks to Go projects. |
 | | | |
