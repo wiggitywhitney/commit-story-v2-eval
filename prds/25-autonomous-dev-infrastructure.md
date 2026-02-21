@@ -112,7 +112,7 @@ The shared testing framework (global CLAUDE.md rules, tiered hooks, decision gui
 
 - [x] Run Claude Code with skip-permissions on a bounded task in commit-story-v2 with all guardrails active
 - [x] Verify: deny list blocks sensitive file access, permissions allow normal workflow, tiered hooks catch real issues at commit/push/PR boundaries
-- [ ] Document any gaps or adjustments needed
+- [x] Document any gaps or adjustments needed
 - [ ] Update shared config repo with lessons learned
 
 #### Validation Results (2026-02-21)
@@ -204,4 +204,5 @@ TDD handles test execution during development. Tests at PR are the formal gate b
 | 2026-02-21 | Milestone 3: Complete | claude-config PRD #1 is fully complete and archived. All deliverables done: CLAUDE.md templates (general + Node.js/TypeScript), per-language rules (TS, JS, Shell, Python, Go), permission profiles guide, commit message hook, dotfile overrides, test tier enforcement hooks, README with validated examples. PRD #8 (Go verification) also completed, extending hooks to Go projects. |
 | 2026-02-21 | Milestone 4: Complete | commit-story-v2 PRD #33 created. cluster-whisperer and telemetry agent PRDs deferred to their respective repos — testing framework is global, project-specific PRDs created when active development begins. |
 | 2026-02-21 | Milestone 5: Validation | Formal validation pass. Deny list: 7/8 probes blocked correctly. **Gap found**: `Read(**/.npmrc)` doesn't match `~/.npmrc` (glob `**/` doesn't match home root). npm auth token exposed. Fix needed: add `Read(.npmrc)` to deny list. Permission allowlist: all normal commands allowed. Tiered hooks: commit (quick+lint) and push (full) both fired and passed. Test tier advisory correctly warned about missing tests. |
+| 2026-02-21 | Milestone 5: Gaps documented | Gaps documented in PRD. claude-config PRD #11 created to fix: `.npmrc` deny list gap, incremental hook tiers (commit→build/typecheck/lint, push→security only, PR→tests only). New hooks already firing locally — push detected docs-only changes and skipped verification entirely. Waiting on claude-config PRD #11 merge to close out. |
 | | | |
