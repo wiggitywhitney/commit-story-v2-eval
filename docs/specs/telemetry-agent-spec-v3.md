@@ -287,7 +287,8 @@ Before instrumentation can begin, user must run `telemetry-agent init`. This is 
 │  3. Validate existing schema (weaver registry check)            │
 │     - Schema must exist (PoC requirement)                       │
 │     - If missing → fail with error                              │
-│  4. Create telemetry-agent.yaml config                          │
+│  4. Detect project type → set dependencyStrategy                │
+│  5. Create telemetry-agent.yaml config                          │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
