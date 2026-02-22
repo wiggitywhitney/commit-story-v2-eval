@@ -299,7 +299,7 @@ describe('discoverReflections', () => {
     const end = new Date(2026, 1, 21, 23, 59, 59);
 
     const result = await discoverReflections(start, end, tmpDir);
-    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result.length).toBe(2);
     expect(result[0]).toHaveProperty('timestamp');
     expect(result[0]).toHaveProperty('content');
   });
@@ -351,7 +351,7 @@ describe('discoverReflections', () => {
     const end = new Date(2026, 1, 21, 23, 59, 59);
 
     const result = await discoverReflections(start, end, tmpDir);
-    expect(result.length).toBeGreaterThanOrEqual(2);
+    expect(result.length).toBe(2);
     expect(result[0].timestamp.getTime()).toBeLessThanOrEqual(result[1].timestamp.getTime());
   });
 
@@ -372,7 +372,7 @@ describe('discoverReflections', () => {
 
     const result = await discoverReflections(start, end, tmpDir);
     // Should find reflections across both months
-    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result.length).toBe(2);
   });
 
   it('ignores non-md files in reflections directory', async () => {

@@ -59,8 +59,8 @@ describe('encodeProjectPath', () => {
     expect(encodeProjectPath('/Users/dev/project/')).toBe('-Users-dev-project');
   });
 
-  it('handles path without trailing slash unchanged', () => {
-    expect(encodeProjectPath('/Users/dev/project')).toBe('-Users-dev-project');
+  it('handles spaces in path', () => {
+    expect(encodeProjectPath('/Users/dev/my project')).toBe('-Users-dev-my project');
   });
 });
 
