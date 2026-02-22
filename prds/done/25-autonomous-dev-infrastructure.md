@@ -118,6 +118,7 @@ The shared testing framework (global CLAUDE.md rules, tiered hooks, decision gui
 #### Validation Results (2026-02-21)
 
 **Deny list** (7 probes):
+
 | Probe | Expected | Actual |
 |-------|----------|--------|
 | `.env` | Blocked | Blocked |
@@ -136,6 +137,7 @@ The shared testing framework (global CLAUDE.md rules, tiered hooks, decision gui
 **Permission allowlist** (4 probes): `git`, `node`, `npm`, `gh` all allowed without prompts. Normal workflow unimpeded.
 
 **Tiered hooks** (3 tiers):
+
 | Hook | Trigger | Result |
 |------|---------|--------|
 | Commit (quick+lint) | `git commit` | Passed — build, typecheck, lint |
@@ -144,11 +146,13 @@ The shared testing framework (global CLAUDE.md rules, tiered hooks, decision gui
 | PR (pre-pr) | `gh pr create` | Not yet tested — will fire when PRD closes |
 
 **Gap**: Tiered hooks repeat work across tiers. Push re-runs build+typecheck+lint (already passed at commit). PR re-runs everything. Each tier should be incremental:
+
 | Tier | Trigger | Should run |
 |------|---------|------------|
 | Commit | `git commit` | build, typecheck, lint |
 | Push | `git push` | security only |
 | PR | `gh pr create` | tests only |
+
 TDD handles test execution during development. Tests at PR are the formal gate before main. Running tests at every push is redundant and slow.
 
 **Done when**: Skip-permissions workflow has been validated in practice and any gaps have been addressed.
