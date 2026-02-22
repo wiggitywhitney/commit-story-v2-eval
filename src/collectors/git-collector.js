@@ -28,7 +28,7 @@ async function runGit(args, { commitRef } = {}) {
       if (error.stderr?.includes('not a git repository')) {
         throw new Error('Not a git repository');
       }
-      if (error.stderr?.includes('unknown revision')) {
+      if (error.stderr?.includes('unknown revision') || error.stderr?.includes('bad revision')) {
         const ref = commitRef ?? args[args.length - 1];
         throw new Error(`Invalid commit reference: ${ref}`);
       }
