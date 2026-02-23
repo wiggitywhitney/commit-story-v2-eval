@@ -141,7 +141,7 @@ User-facing documentation and polish for the summary feature.
 **What's included**:
 - [ ] Update README with summary commands and configuration
 - [ ] Update `--help` output with summary subcommand
-- [ ] Document environment variables (`COMMIT_STORY_AUTO_SUMMARIZE`)
+- [ ] Document environment variables (`COMMIT_STORY_AUTO_SUMMARIZE`, `COMMIT_STORY_TIMEZONE`)
 - [ ] Document file structure for summaries directory
 - [ ] Verify MCP tools (reflections, context) work correctly alongside summary generation
 
@@ -164,6 +164,10 @@ User-facing documentation and polish for the summary feature.
 ### DD-004: ISO week numbers for weekly summaries
 **Decision**: Use ISO 8601 week numbers (e.g., `2026-W08.md`) for weekly summary filenames
 **Rationale**: ISO weeks are unambiguous and widely understood. Avoids the complexity of custom week boundaries.
+
+### DD-005: Timezone policy for boundary calculations
+**Decision**: Use `COMMIT_STORY_TIMEZONE` env var (IANA format, e.g. `America/Chicago`) for all day/week/month boundary calculations. Falls back to system local time if unset.
+**Rationale**: Day boundaries ("is this the first commit of a new day?"), ISO week numbering, and monthly rollup triggers all depend on which timezone interprets the commit timestamp. A developer in `America/New_York` and one in `Asia/Tokyo` would disagree on which day a midnight-UTC commit belongs to. The env var gives explicit control; the system-local fallback keeps zero-config working for solo developers. This follows v1's DD-008 lesson (UTC-first storage with timezone-aware display). All boundary helper functions accept a timezone parameter sourced from this env var.
 
 ## Open Questions
 
