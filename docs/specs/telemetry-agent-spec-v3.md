@@ -1,6 +1,6 @@
 # Telemetry Agent Specification
 
-**Status:** Draft v3.3
+**Status:** Draft v3.4
 **Created:** 2026-02-05
 **Updated:** 2026-02-23
 **Purpose:** AI agent that auto-instruments TypeScript code with OpenTelemetry based on a Weaver schema
@@ -15,6 +15,7 @@
 | v3.1 | 2026-02-16 | **Cost visibility:** Redesigned pre-run cost from post-hoc PR-only to configurable pre-run confirmation step. Renamed from "estimate" to "ceiling" — without historical data, these are ceilings not estimates. Simplified `CostCeiling` cost metric to single `maxTokensCeiling` field (retains `fileCount` and `totalFileSizeBytes` for context; tighter ceilings are future work). Added `onCostCeilingReady` callback, `confirmEstimate` config option (CLI only), CLI `--yes`/`-y` flag, exit code 3 (user abort), and dry run prompt guidance. **MCP:** Added `get-cost-ceiling` tool to handle confirmation at the tool boundary (MCP tools are request-response, can't pause mid-call). Token usage estimation and tighter ceilings added to Out of Scope (Future). Ceiling still appears in PR summary alongside actuals. **Correctness:** Added explicit schema re-resolution between files (agents must see prior agents' extensions). Clarified checkpoint failure behavior: stop processing but still create PR with partial results. Added dry run skips periodic checkpoints. **Precision:** Specified `maxTokensPerFile` enforcement mechanism (Coordinator sums API response metadata). Added schema hash canonicalization requirement. Added squash merge guidance for per-file commits. |
 | v3.2 | 2026-02-21 | **Dependency strategy:** Added `dependencyStrategy` config field (set during init). Services use `dependencies`; distributable packages use `peerDependencies`. `@opentelemetry/api` is always a peerDependency per OTel JS contrib GUIDELINES.md — multiple instances cause silent trace loss. Init phase now detects project type and records the strategy. Coordinator respects strategy during bulk install. |
 | v3.3 | 2026-02-23 | **Prompt engineering:** Completed RS1 research spike; moved conclusions into spec. Agent outputs full file replacement (not diffs), justified on architectural simplicity and documented fragility of diff application logic. Added system prompt structure guidance (role → schema → rules → 3-5 examples → file → format spec) per Anthropic's Claude 4.x best practices. Added Claude 4.x prompt hygiene section (remove anti-laziness directives, use `effort` parameter, frame output completeness as format spec). Added elision detection as Coordinator pre-validation step. Added `largeFileThresholdLines` config. Added known failure modes table with mitigations. Removed RS1 from pre-implementation research spikes (two remain: RS2, RS3). |
+| v3.4 | 2026-02-23 | **Weaver integration:** Completed RS2 research spike; moved conclusions into spec. PoC uses Weaver CLI for all operations (`check`, `resolve`, `diff`, `live-check`). MCP server (v0.21.2, experimental) documented but deferred to post-PoC — schema-changes-between-files invalidates in-memory registry, and MCP lacks `check`/`diff`/`resolve` equivalents. Added Weaver Integration Approach section with CLI operations table, registry directory snapshot strategy for `--baseline-registry`, and post-PoC optimization path. Documented `weaver registry search` CLI deprecation (v0.20.0). Added diff output limitations (`updated` change type not yet implemented; `uncategorized` catch-all exists). Removed RS2 from pre-implementation research spikes (one remains: RS3). |
 
 ---
 
@@ -37,23 +38,7 @@ That verification loop is what makes this approach trustworthy enough to run aut
 
 ## Pre-Implementation Research Spikes
 
-Before implementation begins, two research spikes are required. These are timeboxed investigations whose output is documentation, not code. The implementing agent must complete these before writing any agent logic. (RS1 — prompt engineering for code transformation — has been completed; its conclusions are embedded in the Agent Output Format, System Prompt Structure, and Elision Detection sections below.)
-
-### RS2: Weaver Integration Capabilities
-
-**Goal:** Map the capabilities, constraints, and integration characteristics of Weaver CLI and the Weaver MCP server. This spike produces a capability matrix that RS3 consumes when designing the validation loop — it does not make an integration recommendation. The integration decision belongs in RS3, where the actual validation needs are understood.
-
-**Deliverable:** A document covering:
-- Capability comparison: what each approach can and can't do (notably: the MCP server provides fuzzy search with relevance scoring that has no CLI equivalent, and ad-hoc `live_check` that accepts JSON samples per call rather than requiring an OTLP stream)
-- Architectural implications: the Coordinator would need to maintain an MCP client connection to Weaver alongside its own MCP server for Claude Code — evaluate whether this adds meaningful complexity or is straightforward
-- Performance characteristics: the MCP server resolves the registry once into memory with indexed data structures; the CLI re-loads and re-resolves on every call. Quantify the impact for a typical run (periodic checkpoints, per-file fix loops with up to 3 retries each, 50-file runs)
-- What the MCP server's ad-hoc `live_check` (per-call JSON sample validation) makes possible — document its capabilities so RS3 can evaluate whether per-file runtime validation changes the fix loop structure
-- Whether fuzzy search improves the agent's ability to discover semconv attributes during the attribute priority chain (step 1: check OTel semantic conventions)
-- Whether `weaver registry diff --baseline-registry` accepts the output of `weaver registry resolve` as its baseline input, or requires a copy of the source registry directory. This affects the Coordinator's snapshot strategy for periodic checkpoints, dry run output, and PR summary generation — all three features depend on this command.
-
-**Context:** Weaver v0.21.2 introduced `weaver registry mcp` — an MCP server that imports Weaver's internal Rust crates directly, loads and resolves the entire registry into memory once at startup, and serves 7 tools: `search` (fuzzy text search with relevance scoring), `get_attribute`, `get_metric`, `get_span`, `get_event`, `get_entity` (O(1) lookups from in-memory indexes), and `live_check` (validates telemetry samples against the registry through Weaver's full advisor pipeline). Weaver v0.21.2 also added `weaver serve` (REST API + web UI) which could help during development/debugging.
-
-**Scope:** Focus on PoC needs. Document what's available without bias toward any particular integration approach — the findings should stand on their own so RS3 can make an informed design decision.
+Before implementation begins, one research spike remains. These are timeboxed investigations whose output is documentation, not code. The implementing agent must complete this before writing any agent logic. (RS1 — prompt engineering — and RS2 — Weaver integration capabilities — have been completed; their conclusions are embedded throughout the spec. See the Agent Output Format, System Prompt Structure, and Elision Detection sections for RS1, and the Weaver Integration Approach section for RS2.)
 
 ### RS3: Validation/Fix Loop Design
 
@@ -66,7 +51,7 @@ Before implementation begins, two research spikes are required. These are timebo
 - Recommended max retry counts and when to bail out
 - How to combine multi-turn conversations and fresh API calls within the fix loop (not either/or — evaluate when preserving context helps vs when resetting prevents oscillation)
 - Concrete fix loop design recommendation for this agent
-- Based on the fix loop design and the RS2 capability matrix, determine which Weaver integration points the validation loop needs — this produces the Weaver integration recommendation (CLI, MCP, or both) grounded in actual validation requirements
+- Based on the fix loop design and the Weaver integration findings (see Weaver Integration Approach section), evaluate whether MCP `live_check` (per-call JSON validation without OTLP server) adds value to the per-file fix loop, and whether this is worth the added complexity for PoC
 
 **Implementation-time decision:** The fix loop is not a binary choice between multi-turn conversations and separate API calls — it's a question of when to use each. Multi-turn preserves what the agent tried (valuable for iterating on a specific error), while fresh calls prevent context bloat and oscillation (valuable when the agent is stuck). RS3 should evaluate hybrid strategies: e.g., multi-turn within a validation stage, fresh calls between stages; or multi-turn for the first N retries, then reset to a fresh call if the agent is oscillating.
 
@@ -210,7 +195,7 @@ An `action.yml` that runs the CLI in a GitHub Actions runner. Setup steps: `acti
 | Coordinator | Plain TypeScript (Node.js) | Deterministic orchestration doesn't need a framework |
 | Instrumentation Agent | Direct Anthropic API via `@anthropic-ai/sdk` (model configurable via `agentModel`, default: Sonnet 4.6) | Single provider, maximum control, simplest debugging |
 | AST manipulation | ts-morph | TypeScript-native, full type access, scope analysis |
-| Schema validation | Weaver CLI (with awareness of Weaver MCP server in v0.21.2) | Deterministic validation decoupled from MCP integration during PoC |
+| Schema validation | Weaver CLI (`check`, `resolve`, `diff`, `live-check`) | CLI for all PoC Weaver operations — see Weaver Integration Approach |
 | Code formatting | Prettier | Post-transformation formatting |
 | MCP interface | MCP TypeScript SDK | Thin wrapper over Coordinator |
 
@@ -218,9 +203,42 @@ An `action.yml` that runs the CLI in a GitHub Actions runner. Setup steps: `acti
 
 **Why not Vercel AI SDK:** Provider-agnostic abstraction adds a layer with no benefit when using a single provider (Claude). The direct Anthropic SDK gives the most transparent debugging experience.
 
-**Note on Weaver MCP server:** Weaver v0.21.2 introduced `weaver registry mcp` — an MCP server providing search, get, and live-check tools directly. Since the PoC architecture already uses MCP (Claude Code → MCP server → Coordinator), the agent could interact with Weaver's native MCP server for schema operations instead of shelling out to CLI commands. Weaver v0.21.2 also added `weaver serve` (REST API + web UI) which could help during development/debugging.
+**Note on Weaver MCP server:** Weaver v0.21.2 introduced `weaver registry mcp` (experimental) — an MCP server that resolves the registry into memory once and serves 7 tools: `search`, `get_attribute`, `get_metric`, `get_span`, `get_event`, `get_entity`, and `live_check`. Weaver v0.21.2 also added `weaver serve` (experimental REST API + web UI). Both are documented for post-PoC optimization — the PoC uses CLI only. See "Weaver Integration Approach" below for the full rationale.
 
-**Weaver integration approach:** Determined by the RS2 + RS3 research spikes. RS2 maps the capabilities of both the CLI (`weaver registry check`, `weaver registry resolve`, `weaver registry diff`) and the MCP server (`weaver registry mcp`, providing in-memory resolution, fuzzy search, and per-call live validation). RS3 then determines which integration points the validation loop needs, producing the final integration recommendation grounded in actual requirements.
+### Weaver Integration Approach
+
+**PoC decision: CLI only.** All Weaver operations use the CLI. The MCP server (v0.21.2, experimental) is documented for post-PoC optimization but not used in the PoC.
+
+**Why not the MCP server for PoC:**
+
+1. **Schema changes between files invalidate in-memory state.** The MCP server resolves the registry once at startup into in-memory indexed structures. Since agents extend the schema and their changes are committed after each file, the MCP server's in-memory state becomes stale after every file. The server would need to be restarted after each schema change, negating the in-memory benefit. The CLI's per-call resolution is actually the correct behavior for this use case — it always sees the latest filesystem state.
+
+2. **Missing critical operations.** The MCP server provides 7 tools (`search`, `get_attribute`, `get_metric`, `get_span`, `get_event`, `get_entity`, `live_check`) but does NOT expose `registry check` (static validation), `registry diff` (schema diffing), or `registry resolve` (full JSON resolution). These are required for periodic checkpoints, PR summaries, and agent context construction.
+
+3. **Experimental status.** Both `weaver registry mcp` and `weaver serve` are marked as experimental features in the v0.21.2 release. Building PoC infrastructure on experimental features creates upgrade risk.
+
+**CLI operations used in PoC:**
+
+| Operation | CLI Command | When Used |
+|-----------|------------|-----------|
+| Static schema validation | `weaver registry check -r <path>` | Periodic checkpoints, per-file fix loop |
+| Full schema resolution | `weaver registry resolve -r <path> -f json` | Before each file (agent context) |
+| Schema diffing | `weaver registry diff -r <current> --baseline-registry <snapshot-dir>` | Periodic checkpoints, dry run summary, PR summary |
+| Live telemetry validation | `weaver registry live-check -r <path>` | End-of-run validation (OTLP receiver) |
+
+**CLI `registry search` is deprecated** (v0.20.0) — "not compatible with V2 schema and will be removed in a future version." The agent discovers semconv attributes from the resolved schema JSON provided in its system prompt context, not via search commands.
+
+**Registry directory snapshot for diffing:** `weaver registry diff --baseline-registry` requires a registry directory as input — it does NOT accept resolved JSON from `weaver registry resolve`. The Coordinator copies the registry directory (`cp -r`) to a temporary location at the start of the run (before any agents execute). This directory copy serves as the baseline for all diff operations: periodic checkpoints, dry run summaries, and the final PR summary.
+
+**Diff output limitations:** The diff classifies changes as `added`, `renamed`, `obsoleted`, `removed`, or `uncategorized` (a catch-all for complex or unclear changes). The `updated` change type is documented but **not yet implemented** in Weaver's diff engine — field-level comparison within top-level items is planned for future versions. The Coordinator's "reject any change type other than `added`" enforcement checks for `renamed`, `obsoleted`, `removed`, and `uncategorized`. Only top-level object presence/absence is tracked by the current diff.
+
+**Post-PoC optimization path:** The Weaver MCP server offers capabilities that could enhance future versions:
+
+- **Fuzzy search with relevance scoring** (`search` tool) — useful if the system prompt sends a subset of the resolved schema to save tokens. The agent could use MCP search to discover attributes not in its context window. Requires giving the agent MCP tool access (multi-turn tool-using conversation rather than one-shot API calls).
+- **Ad-hoc `live_check`** — validates JSON telemetry samples per call (input format: `{ "samples": [...] }` with attribute/span/metric objects) without starting an OTLP receiver. Could enable lightweight per-file schema validation by constructing synthetic samples from the agent's output. RS3 should evaluate whether this adds value to the fix loop.
+- **O(1) signal lookups** (`get_attribute`, `get_span`, etc.) — direct lookups without parsing full resolved JSON. Most useful for building tool-augmented agent prompts.
+
+To use the MCP server, the Coordinator would maintain an `@modelcontextprotocol/sdk` client connection via `StdioClientTransport` (spawning `weaver registry mcp` as a child process). This is architecturally straightforward — approximately 10 lines of setup — and uses the same SDK the Coordinator already imports for its own MCP server interface. The Coordinator would simultaneously be an MCP server (for Claude Code) and an MCP client (for Weaver), which is a standard pattern supported natively by the SDK's separate `Server` and `Client` classes.
 
 ---
 
@@ -444,7 +462,7 @@ Implementation: The Coordinator copies the file (and its corresponding schema st
 
 ### Periodic Schema Checkpoints
 
-To catch schema drift early instead of discovering it only at end-of-run, the Coordinator runs `weaver registry check` every `schemaCheckpointInterval` files (default: 5). Alongside validation, the Coordinator runs `weaver registry diff --baseline-registry <snapshot> -r ./telemetry/registry --diff-format json` to capture exactly what changed since the last checkpoint. This makes checkpoint output actionable — not just "valid/invalid" but "here's what was added."
+To catch schema drift early instead of discovering it only at end-of-run, the Coordinator runs `weaver registry check` every `schemaCheckpointInterval` files (default: 5). Alongside validation, the Coordinator runs `weaver registry diff --baseline-registry <snapshot-dir> -r ./telemetry/registry --diff-format json` to capture exactly what changed since the last checkpoint. The `<snapshot-dir>` is a directory copy of the registry made at the start of the run — `--baseline-registry` requires a registry directory, not resolved JSON (see Weaver Integration Approach). This makes checkpoint output actionable — not just "valid/invalid" but "here's what was added." Note: Weaver's diff currently tracks top-level object changes only (`added`, `renamed`, `obsoleted`, `removed`, `uncategorized`). The `updated` change type is not yet implemented, so field-level changes within existing objects are not detected by diff — they would be caught by `registry check` if they violate schema rules.
 
 If a checkpoint fails, the Coordinator stops processing new files by default. Files committed before the failing checkpoint are valid (they passed their own validations and all previous checkpoints), so the Coordinator still creates a PR with the partial results — the PR summary notes the checkpoint failure and identifies which files were processed since the last successful checkpoint (the blast radius). This is consistent with the fail-forward philosophy: don't waste work that already succeeded. Interface layers can override this behavior by providing an `onSchemaCheckpoint` callback that returns `true` to continue processing despite the failure; returning `false` or `void` (or not providing the callback) stops processing.
 
@@ -671,7 +689,7 @@ The agent can extend the schema, but must follow existing patterns:
 
 3. **Add or create, but stay consistent** — Agent can add to existing groups or create new ones, but must observe and follow the conventions in the existing schema.
 
-4. **Coordinator enforces via drift detection** — The Coordinator sums `attributes_created` and `spans_added` across all results. Unreasonable totals (e.g., 30 new attributes for a single file) get flagged for human review. Additionally, `weaver registry diff` (with `--diff-format json`) classifies each schema change as `added`, `renamed`, `updated`, `obsoleted`, or `removed`. The Coordinator can reject any change type other than `added` to enforce the "extend only" constraint programmatically.
+4. **Coordinator enforces via drift detection** — The Coordinator sums `attributes_created` and `spans_added` across all results. Unreasonable totals (e.g., 30 new attributes for a single file) get flagged for human review. Additionally, `weaver registry diff` (with `--diff-format json`) classifies each schema change as `added`, `renamed`, `obsoleted`, `removed`, or `uncategorized`. (The `updated` change type is documented but not yet implemented in Weaver's diff engine.) The Coordinator rejects any change type other than `added` to enforce the "extend only" constraint programmatically — in practice, this means checking for `renamed`, `obsoleted`, `removed`, and `uncategorized`.
 
 ---
 
@@ -1370,7 +1388,8 @@ Four levers:
 **Prerequisites and setup:**
 - Assumes target codebase already has OTel API and SDK installed, initialized, and a valid Weaver schema in place
 - Prompt engineering conclusions embedded in spec (agent output format, system prompt structure, elision detection, known failure modes)
-- Pre-implementation research spikes (RS2: Weaver integration capabilities, RS3: fix loop design)
+- Weaver integration conclusions embedded in spec (CLI for all PoC operations — see Weaver Integration Approach)
+- Pre-implementation research spike (RS3: fix loop design)
 - Mandatory init phase with prerequisite verification and SDK init file path recording
 - Config validation (Zod schema)
 
@@ -1474,3 +1493,10 @@ Relevant when the agent targets codebases that don't already have OTel installed
 - ["Detecting and Correcting Hallucinations in LLM-Generated Code" (Khati et al., FORGE '26)](https://arxiv.org/abs/2601.19106)
 - [Cursor speculative edits architecture](https://blog.sshh.io/p/how-cursor-ai-ide-works)
 - ["My LLM Coding Workflow going into 2026" (Osmani, January 2026)](https://addyosmani.com/blog/ai-coding-workflow/)
+
+### RS2 Research Sources (verified February 2026)
+- [Weaver v0.21.2 release notes — MCP server, `weaver serve`](https://github.com/open-telemetry/weaver/releases/tag/v0.21.2)
+- [Weaver `docs/usage.md` — CLI command reference, `--baseline-registry`](https://github.com/open-telemetry/weaver/blob/main/docs/usage.md)
+- [Weaver `docs/schema-changes.md` — diff output format, `updated` not implemented](https://github.com/open-telemetry/weaver/blob/main/docs/schema-changes.md)
+- [Weaver v0.20.0 release notes — `registry search` deprecation](https://github.com/open-telemetry/weaver/releases/tag/v0.20.0)
+- [MCP TypeScript SDK — client API, `StdioClientTransport`](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
