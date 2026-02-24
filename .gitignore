@@ -27,8 +27,8 @@ npm-debug.log*
 # Local MCP config
 .mcp.json
 
-# Journal output (user-specific)
-journal/
+# Journal context captures (user-specific, may contain sensitive session data)
+journal/context/
 
 # Secrets
 *.pem

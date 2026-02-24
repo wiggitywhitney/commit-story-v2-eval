@@ -1,6 +1,10 @@
 # Telemetry Agent Specification
 
-**Status:** Draft v3.5
+> **This copy is no longer canonical.** The canonical spec lives at
+> [telemetry-agent-research/docs/specs/](https://github.com/wiggitywhitney/telemetry-agent-research/tree/main/docs/specs).
+> This file is kept for reference only and will not be updated.
+
+**Status:** Draft v3.5 (archived copy)
 **Created:** 2026-02-05
 **Updated:** 2026-02-23
 **Purpose:** AI agent that auto-instruments TypeScript code with OpenTelemetry based on a Weaver schema
