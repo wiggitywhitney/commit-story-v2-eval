@@ -45,7 +45,7 @@ journal/
 ## Milestones
 
 ### Milestone 1: Daily Summary Generation
-**Status**: Not Started
+**Status**: Complete
 
 Implement the core daily summary pipeline — read all journal entries for a given date, generate a consolidated narrative via LangGraph, and write to `journal/summaries/daily/`.
 
@@ -54,11 +54,11 @@ Implement the core daily summary pipeline — read all journal entries for a giv
 - Proposed sections: **Narrative** (what was accomplished and why), **Key Decisions** (consolidated technical decisions from the day), **Open Threads** (things left unfinished or questions raised)
 
 **What's included**:
-- [ ] `src/utils/journal-paths.js` — add `getSummaryPath(cadence, date)` and `getSummariesDirectory(cadence)`
-- [ ] `src/generators/summary-graph.js` — new LangGraph StateGraph for summary generation (separate from per-commit journal-graph)
-- [ ] `src/generators/prompts/sections/daily-summary-prompt.js` — prompt template for daily consolidation
-- [ ] `src/managers/summary-manager.js` — orchestrates reading entries, calling the graph, writing output
-- [ ] Tests for all new components
+- [x] `src/utils/journal-paths.js` — add `getSummaryPath(cadence, date)` and `getSummariesDirectory(cadence)`
+- [x] `src/generators/summary-graph.js` — new LangGraph StateGraph for summary generation (separate from per-commit journal-graph)
+- [x] `src/generators/prompts/sections/daily-summary-prompt.js` — prompt template for daily consolidation
+- [x] `src/managers/summary-manager.js` — orchestrates reading entries, calling the graph, writing output
+- [x] Tests for all new components
 
 **Done when**: `npx commit-story summarize 2026-02-22` reads that day's journal entries and produces a coherent daily summary in `journal/summaries/daily/2026-02-22.md`
 
@@ -178,6 +178,14 @@ User-facing documentation and polish for the summary feature.
 3. **Reflections in summaries**: Should daily summaries incorporate reflections and context captures from that day, or only the journal entries?
 
 ## Progress Log
+
+### 2026-03-04
+- Completed Milestone 1: Daily Summary Generation
+- Added `getSummaryPath`, `getSummariesDirectory`, `getISOWeekString` to journal-paths.js
+- Created `daily-summary-prompt.js` with 5-step architecture (authored via /write-prompt)
+- Created `summary-graph.js` — separate LangGraph StateGraph per DD-001
+- Created `summary-manager.js` — orchestrates read entries → generate → save with duplicate detection (DD-003)
+- 55 new tests across 4 test files, all 367 tests passing
 
 ### 2026-02-23
 - Created PRD from v1 PRD-5 design adapted for v2 architecture

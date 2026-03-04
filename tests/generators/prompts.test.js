@@ -1,14 +1,11 @@
-/**
- * Tests for prompt modules — guidelines and section prompts
- *
- * Verifies prompt structure, conditional branching, and content integrity.
- * These are deterministic string functions — no mocks needed.
- */
+// ABOUTME: Tests for prompt modules — guidelines and section prompts
+// ABOUTME: Verifies prompt structure, conditional branching, and content integrity
 
 import { describe, it, expect } from 'vitest';
 import { summaryPrompt } from '../../src/generators/prompts/sections/summary-prompt.js';
 import { dialoguePrompt } from '../../src/generators/prompts/sections/dialogue-prompt.js';
 import { technicalDecisionsPrompt } from '../../src/generators/prompts/sections/technical-decisions-prompt.js';
+import { dailySummaryPrompt } from '../../src/generators/prompts/sections/daily-summary-prompt.js';
 import {
   getAllGuidelines,
   antiHallucinationGuidelines,
@@ -147,5 +144,55 @@ describe('antiHallucinationGuidelines', () => {
 describe('accessibilityGuidelines', () => {
   it('mentions external readers', () => {
     expect(accessibilityGuidelines).toContain('external');
+  });
+});
+
+// ===========================================================================
+// Daily summary prompt — dynamic template based on entry count
+// ===========================================================================
+
+describe('dailySummaryPrompt', () => {
+  it('contains all 5 steps', () => {
+    const prompt = dailySummaryPrompt(3);
+    for (let i = 1; i <= 5; i++) {
+      expect(prompt).toContain(`Step ${i}`);
+    }
+  });
+
+  it('includes banned words list', () => {
+    const prompt = dailySummaryPrompt(3);
+    expect(prompt).toContain('BANNED WORDS');
+    expect(prompt).toContain('comprehensive');
+  });
+
+  it('adjusts guidance for single entry', () => {
+    const prompt = dailySummaryPrompt(1);
+    expect(prompt).toContain('only 1 journal entry');
+    expect(prompt).toContain('brief and factual');
+  });
+
+  it('adjusts guidance for multiple entries', () => {
+    const prompt = dailySummaryPrompt(5);
+    expect(prompt).toContain('5 journal entries');
+    expect(prompt).toContain('connections between commits');
+  });
+
+  it('specifies three output sections', () => {
+    const prompt = dailySummaryPrompt(3);
+    expect(prompt).toContain('## Narrative');
+    expect(prompt).toContain('## Key Decisions');
+    expect(prompt).toContain('## Open Threads');
+  });
+
+  it('includes anti-hallucination guidance', () => {
+    const prompt = dailySummaryPrompt(3);
+    expect(prompt).toContain('Do NOT');
+    expect(prompt).toContain('not present in the source entries');
+  });
+
+  it('specifies voice and tone guidelines', () => {
+    const prompt = dailySummaryPrompt(3);
+    expect(prompt).toContain('contractions');
+    expect(prompt).toContain('the developer');
   });
 });

@@ -1,15 +1,14 @@
-/**
- * Journal Path Utilities
- *
- * Provides consistent path generation for journal entries, reflections, and context.
- * Uses date-based directory structure: journal/{type}/YYYY-MM/YYYY-MM-DD.md
- */
+// ABOUTME: Centralizes path generation for all journal files (entries, reflections, context, summaries)
+// ABOUTME: Uses date-based directory structure: journal/{type}/YYYY-MM/YYYY-MM-DD.md
 
 import { mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 
 /** Root directory for all journal files */
 const JOURNAL_ROOT = 'journal';
+
+/** Valid summary cadences */
+const VALID_CADENCES = ['daily', 'weekly', 'monthly'];
 
 /**
  * Get YYYY-MM format for directory names
@@ -112,4 +111,68 @@ export function parseDateFromFilename(filename) {
  */
 export function getJournalRoot(basePath = '.') {
   return join(basePath, JOURNAL_ROOT);
+}
+
+/**
+ * Get ISO 8601 week string (YYYY-Www) for a date.
+ * Uses ISO week-year, which can differ from calendar year at boundaries.
+ * @param {Date} date - Date object
+ * @returns {string} ISO week string like "2026-W09"
+ */
+export function getISOWeekString(date) {
+  // ISO week date: week 1 contains the first Thursday of the year
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  // Set to nearest Thursday: current date + 4 - day number (Monday=1, Sunday=7)
+  const dayNum = d.getUTCDay() || 7; // Convert Sunday from 0 to 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  // ISO week-year is the year of that Thursday
+  const isoYear = d.getUTCFullYear();
+  // Week number: how many Thursdays have passed since Jan 1
+  const jan1 = new Date(Date.UTC(isoYear, 0, 1));
+  const weekNum = Math.ceil(((d - jan1) / 86400000 + 1) / 7);
+  return `${isoYear}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+/**
+ * Get path to summary file for a given cadence and date.
+ * Daily: journal/summaries/daily/YYYY-MM-DD.md
+ * Weekly: journal/summaries/weekly/YYYY-Www.md
+ * Monthly: journal/summaries/monthly/YYYY-MM.md
+ * @param {'daily'|'weekly'|'monthly'} cadence - Summary cadence
+ * @param {Date} date - Date for the summary
+ * @param {string} basePath - Base path (default: current directory)
+ * @returns {string} Full path to summary file
+ */
+export function getSummaryPath(cadence, date, basePath = '.') {
+  if (!VALID_CADENCES.includes(cadence)) {
+    throw new Error(`Invalid cadence: "${cadence}". Must be one of: ${VALID_CADENCES.join(', ')}`);
+  }
+
+  let filename;
+  switch (cadence) {
+    case 'daily':
+      filename = `${getDateString(date)}.md`;
+      break;
+    case 'weekly':
+      filename = `${getISOWeekString(date)}.md`;
+      break;
+    case 'monthly':
+      filename = `${getYearMonth(date)}.md`;
+      break;
+  }
+
+  return join(basePath, JOURNAL_ROOT, 'summaries', cadence, filename);
+}
+
+/**
+ * Get directory containing summaries for a given cadence.
+ * @param {'daily'|'weekly'|'monthly'} cadence - Summary cadence
+ * @param {string} basePath - Base path (default: current directory)
+ * @returns {string} Path to summaries directory
+ */
+export function getSummariesDirectory(cadence, basePath = '.') {
+  if (!VALID_CADENCES.includes(cadence)) {
+    throw new Error(`Invalid cadence: "${cadence}". Must be one of: ${VALID_CADENCES.join(', ')}`);
+  }
+  return join(basePath, JOURNAL_ROOT, 'summaries', cadence);
 }
