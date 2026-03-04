@@ -82,16 +82,16 @@ Commit Story can consolidate your per-commit journal entries into daily, weekly,
 
 ### Automatic Generation
 
-When enabled, summaries generate automatically on each commit:
+Summaries generate automatically on each commit:
 
 1. On the first commit of a new day, daily summaries are generated for all unsummarized previous days
 2. On the first commit after a week boundary, a weekly summary is generated
 3. On the first commit of a new month, a monthly summary is generated
 
-Enable automatic summaries:
+To disable automatic summaries:
 
 ```bash
-export COMMIT_STORY_AUTO_SUMMARIZE=true
+export COMMIT_STORY_AUTO_SUMMARIZE=false
 ```
 
 ### Manual Generation
@@ -117,7 +117,7 @@ npx commit-story summarize --monthly 2026-02 --force      # Regenerate existing
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `COMMIT_STORY_AUTO_SUMMARIZE` | Enable automatic summary generation on each commit | `false` (disabled) |
+| `COMMIT_STORY_AUTO_SUMMARIZE` | Set to `false` to disable automatic summary generation | `true` (enabled) |
 | `COMMIT_STORY_TIMEZONE` | IANA timezone for day/week/month boundaries (e.g., `America/Chicago`) | System local time |
 | `ANTHROPIC_API_KEY` | Required for all AI generation | — |
 

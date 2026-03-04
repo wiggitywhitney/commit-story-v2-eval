@@ -74,7 +74,7 @@ Make daily summaries automatic — detect the first commit of a new day and gene
 - [x] Integration into `src/index.js` — after saving a journal entry, check if summaries are needed for previous days
 - [x] Smart gap handling: skip days with no entries (weekends, vacations), detect irregular patterns
 - [x] Duplicate prevention: check for existing summary files before generating
-- [x] Configuration: environment variable to enable/disable auto-summaries (`COMMIT_STORY_AUTO_SUMMARIZE=true`)
+- [x] Configuration: auto-summaries enabled by default; set `COMMIT_STORY_AUTO_SUMMARIZE=false` to disable
 - [x] Tests for gap detection logic and auto-trigger integration
 
 **Done when**: Making the first commit on Monday automatically generates daily summaries for any unsummarized days from the previous week that had journal entries
