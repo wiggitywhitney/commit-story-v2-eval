@@ -117,17 +117,17 @@ Weekly rollups that consolidate daily summaries into a higher-level narrative. U
 ---
 
 ### Milestone 5: Monthly Summaries
-**Status**: Not Started
+**Status**: Complete
 
 Monthly rollups that consolidate weekly summaries into a retrospective view.
 
 **What's included**:
-- [ ] `src/generators/prompts/sections/monthly-summary-prompt.js` — prompt for monthly consolidation
-- [ ] Extend `summary-manager.js` to support monthly cadence
-- [ ] Proposed sections: **Month in Review** (narrative arc), **Accomplishments** (shipped features, resolved issues), **Growth** (skills learned, patterns discovered), **Looking Ahead** (open threads, upcoming work)
-- [ ] Auto-trigger: generate monthly summary on first commit of a new month
-- [ ] Manual: `npx commit-story summarize --monthly 2026-02`
-- [ ] Tests for monthly generation
+- [x] `src/generators/prompts/sections/monthly-summary-prompt.js` — prompt for monthly consolidation
+- [x] Extend `summary-manager.js` to support monthly cadence
+- [x] Proposed sections: **Month in Review** (narrative arc), **Accomplishments** (shipped features, resolved issues), **Growth** (skills learned, patterns discovered), **Looking Ahead** (open threads, upcoming work)
+- [x] Auto-trigger: generate monthly summary on first commit of a new month
+- [x] Manual: `npx commit-story summarize --monthly 2026-02`
+- [x] Tests for monthly generation
 
 **Done when**: Monthly summaries generate from weekly summaries and provide a useful retrospective of the month's development work
 
@@ -180,6 +180,15 @@ User-facing documentation and polish for the summary feature.
 ## Progress Log
 
 ### 2026-03-04
+- Completed Milestone 5: Monthly Summaries
+- Created `monthly-summary-prompt.js` with 6-step process and 4 sections (Month in Review, Accomplishments, Growth, Looking Ahead)
+- Extended `summary-graph.js` with MonthlySummaryState, monthlySummaryNode, generateMonthlySummary, formatWeeklySummariesForMonthly, cleanMonthlySummaryOutput
+- Extended `summary-manager.js` with getMonthBoundaries, readMonthWeeklySummaries, formatMonthlySummary, saveMonthlySummary, generateAndSaveMonthlySummary
+- Extended `summary-detector.js` with findUnsummarizedMonths
+- Extended `auto-summarize.js` with triggerAutoMonthlySummaries; triggerAutoSummaries now chains daily → weekly → monthly
+- Extended `summarize.js` CLI with --monthly flag, isValidMonthString, runMonthlySummarize
+- Updated `index.js` handleSummarize for monthly mode; auto-summarize output shows daily + weekly + monthly counts
+- 62 new tests across 7 test files, all 535 tests passing
 - Completed Milestone 4: Weekly Summaries
 - Created `weekly-summary-prompt.js` with 5-step process (authored via /write-prompt review)
 - Extended `summary-graph.js` with WeeklySummaryState, weeklySummaryNode, generateWeeklySummary

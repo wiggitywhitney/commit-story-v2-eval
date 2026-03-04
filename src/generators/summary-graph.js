@@ -1,12 +1,12 @@
-// ABOUTME: LangGraph StateGraphs for summary generation (daily and weekly, separate from per-commit journal-graph)
-// ABOUTME: Daily: consolidates journal entries into Narrative, Key Decisions, Open Threads
-// ABOUTME: Weekly: consolidates daily summaries into Week in Review, Highlights, Patterns
+// ABOUTME: LangGraph StateGraphs for summary generation (daily, weekly, monthly — separate from per-commit journal-graph)
+// ABOUTME: Daily: Narrative, Key Decisions, Open Threads; Weekly: Week in Review, Highlights, Patterns; Monthly: Month in Review, Accomplishments, Growth, Looking Ahead
 
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { dailySummaryPrompt } from './prompts/sections/daily-summary-prompt.js';
 import { weeklySummaryPrompt } from './prompts/sections/weekly-summary-prompt.js';
+import { monthlySummaryPrompt } from './prompts/sections/monthly-summary-prompt.js';
 
 /**
  * Summary state definition using LangGraph Annotation API.
@@ -433,6 +433,202 @@ export async function generateWeeklySummary(dailySummaries, weekLabel) {
     weekInReview: result.weekInReview || '',
     highlights: result.highlights || '',
     patterns: result.patterns || '',
+    errors: result.errors || [],
+    generatedAt: new Date(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Monthly summary generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Monthly summary state definition.
+ * Input: weeklySummaries (array of weekly summary objects) and monthLabel.
+ * Output: parsed sections from the LLM response.
+ */
+export const MonthlySummaryState = Annotation.Root({
+  // Input
+  weeklySummaries: Annotation(),
+  monthLabel: Annotation(),
+
+  // Outputs (populated by node)
+  monthInReview: Annotation(),
+  accomplishments: Annotation(),
+  growth: Annotation(),
+  lookingAhead: Annotation(),
+
+  // Metadata
+  errors: Annotation({
+    reducer: (left, right) => [...(left || []), ...(right || [])],
+    default: () => [],
+  }),
+});
+
+/**
+ * Format weekly summaries for LLM consumption.
+ * Labels each by week and provides context about the month.
+ * @param {Array<{ weekLabel: string, content: string }>} weeklySummaries - Weekly summaries with labels
+ * @returns {string} Formatted summaries for the human message
+ */
+export function formatWeeklySummariesForMonthly(weeklySummaries) {
+  if (!weeklySummaries || weeklySummaries.length === 0) {
+    return 'No weekly summaries found for this month.';
+  }
+
+  const count = weeklySummaries.length;
+  const header = count === 1
+    ? `The following is 1 weekly summary from this month:`
+    : `The following are ${count} weekly summaries from this month:`;
+
+  const formatted = weeklySummaries.map((summary, i) =>
+    `--- Week ${i + 1} of ${count}: ${summary.weekLabel} ---\n\n${summary.content}`
+  ).join('\n\n');
+
+  return `${header}\n\n${formatted}`;
+}
+
+/**
+ * Parse the LLM's response into the four monthly summary sections.
+ * Extracts content between ## Month in Review, ## Accomplishments, ## Growth, ## Looking Ahead headers.
+ * @param {string} raw - Raw LLM output
+ * @returns {{ monthInReview: string, accomplishments: string, growth: string, lookingAhead: string }}
+ */
+function parseMonthlySummarySections(raw) {
+  const sections = { monthInReview: '', accomplishments: '', growth: '', lookingAhead: '' };
+  if (!raw) return sections;
+
+  const sectionPattern = /^## (Month in Review|Accomplishments|Growth|Looking Ahead)\s*$/gm;
+  const matches = [...raw.matchAll(sectionPattern)];
+
+  for (let i = 0; i < matches.length; i++) {
+    const name = matches[i][1];
+    const startIdx = matches[i].index + matches[i][0].length;
+    const endIdx = i + 1 < matches.length ? matches[i + 1].index : raw.length;
+    const content = raw.slice(startIdx, endIdx).trim();
+
+    if (name === 'Month in Review') sections.monthInReview = content;
+    else if (name === 'Accomplishments') sections.accomplishments = content;
+    else if (name === 'Growth') sections.growth = content;
+    else if (name === 'Looking Ahead') sections.lookingAhead = content;
+  }
+
+  // If no sections were parsed, put everything in monthInReview
+  if (!sections.monthInReview && !sections.accomplishments && !sections.growth && !sections.lookingAhead) {
+    sections.monthInReview = raw.trim();
+  }
+
+  return sections;
+}
+
+/**
+ * Post-processing: clean monthly summary output.
+ * Strips preamble and replaces banned formal words.
+ */
+export function cleanMonthlySummaryOutput(raw) {
+  if (!raw) return raw;
+
+  let result = raw;
+
+  // Replace banned words (same list as daily/weekly)
+  for (const [pattern, replacement] of BANNED_WORD_REPLACEMENTS) {
+    result = result.replace(pattern, replacement);
+  }
+
+  // Strip preamble before ## Month in Review
+  const reviewIdx = result.indexOf('## Month in Review');
+  if (reviewIdx > 0) {
+    result = result.slice(reviewIdx);
+  }
+
+  return result.trim() || raw;
+}
+
+/**
+ * Monthly summary generation node.
+ * Reads weekly summaries and produces a consolidated monthly summary.
+ */
+export async function monthlySummaryNode(state) {
+  const { weeklySummaries, monthLabel } = state;
+
+  // Early exit: no weekly summaries to consolidate
+  if (!weeklySummaries || weeklySummaries.length === 0) {
+    return {
+      monthInReview: 'No weekly summaries found for this month.',
+      accomplishments: '',
+      growth: '',
+      lookingAhead: '',
+      errors: [],
+    };
+  }
+
+  try {
+    const prompt = monthlySummaryPrompt(weeklySummaries.length);
+    const formattedSummaries = formatWeeklySummariesForMonthly(weeklySummaries);
+
+    const result = await getModel(0.7).invoke([
+      new SystemMessage(prompt),
+      new HumanMessage(formattedSummaries),
+    ]);
+
+    const cleaned = cleanMonthlySummaryOutput(result.content);
+    const sections = parseMonthlySummarySections(cleaned);
+
+    return {
+      monthInReview: sections.monthInReview,
+      accomplishments: sections.accomplishments,
+      growth: sections.growth,
+      lookingAhead: sections.lookingAhead,
+      errors: [],
+    };
+  } catch (error) {
+    return {
+      monthInReview: '[Monthly summary generation failed]',
+      accomplishments: '',
+      growth: '',
+      lookingAhead: '',
+      errors: [`Monthly summary generation failed: ${error.message}`],
+    };
+  }
+}
+
+/**
+ * Build and compile the monthly summary graph.
+ * Simple single-node pipeline: START → generate_monthly_summary → END
+ */
+function buildMonthlyGraph() {
+  const graph = new StateGraph(MonthlySummaryState)
+    .addNode('generate_monthly_summary', monthlySummaryNode)
+    .addEdge(START, 'generate_monthly_summary')
+    .addEdge('generate_monthly_summary', END);
+
+  return graph.compile();
+}
+
+let compiledMonthlyGraph;
+
+function getMonthlyGraph() {
+  if (!compiledMonthlyGraph) {
+    compiledMonthlyGraph = buildMonthlyGraph();
+  }
+  return compiledMonthlyGraph;
+}
+
+/**
+ * Generate a monthly summary from weekly summaries.
+ * @param {Array<{ weekLabel: string, content: string }>} weeklySummaries - Weekly summaries with labels
+ * @param {string} monthLabel - Month string (e.g., "2026-02") for context
+ * @returns {Promise<{ monthInReview: string, accomplishments: string, growth: string, lookingAhead: string, errors: string[], generatedAt: Date }>}
+ */
+export async function generateMonthlySummary(weeklySummaries, monthLabel) {
+  const graph = getMonthlyGraph();
+  const result = await graph.invoke({ weeklySummaries, monthLabel });
+
+  return {
+    monthInReview: result.monthInReview || '',
+    accomplishments: result.accomplishments || '',
+    growth: result.growth || '',
+    lookingAhead: result.lookingAhead || '',
     errors: result.errors || [],
     generatedAt: new Date(),
   };

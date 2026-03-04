@@ -1,4 +1,4 @@
-// ABOUTME: Tests for summary-detector.js — gap detection for unsummarized journal days and weeks
+// ABOUTME: Tests for summary-detector.js — gap detection for unsummarized journal days, weeks, and months
 // ABOUTME: Uses temp directories with fixture entries and summaries to test detection logic
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import {
   findUnsummarizedDays,
   findUnsummarizedWeeks,
+  findUnsummarizedMonths,
   getDaysWithEntries,
   getDaysWithDailySummaries,
 } from '../../src/utils/summary-detector.js';
@@ -47,6 +48,12 @@ function writeWeeklySummary(weekStr, content = '# Weekly Summary\n\nSome weekly 
   const dir = join(tmpDir, 'journal', 'summaries', 'weekly');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `${weekStr}.md`), content, 'utf-8');
+}
+
+function writeMonthlySummary(monthStr, content = '# Monthly Summary\n\nSome monthly summary') {
+  const dir = join(tmpDir, 'journal', 'summaries', 'monthly');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${monthStr}.md`), content, 'utf-8');
 }
 
 // ---------------------------------------------------------------------------
@@ -269,5 +276,80 @@ describe('findUnsummarizedWeeks', () => {
     for (let i = 1; i < result.length; i++) {
       expect(result[i] > result[i - 1]).toBe(true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findUnsummarizedMonths
+// ---------------------------------------------------------------------------
+
+describe('findUnsummarizedMonths', () => {
+  beforeEach(setupTmpDir);
+  afterEach(teardownTmpDir);
+
+  it('returns empty array when no weekly summaries exist', async () => {
+    const result = await findUnsummarizedMonths(tmpDir);
+    expect(result).toEqual([]);
+  });
+
+  it('returns month strings for months with weekly summaries but no monthly summary', async () => {
+    // W06 (Feb 2-8) and W08 (Feb 16-22) are in February 2026
+    writeWeeklySummary('2026-W06');
+    writeWeeklySummary('2026-W08');
+    // W02 (Jan 5-11) is in January 2026
+    writeWeeklySummary('2026-W02');
+
+    const result = await findUnsummarizedMonths(tmpDir);
+    expect(result).toContain('2026-01');
+    expect(result).toContain('2026-02');
+  });
+
+  it('excludes months that already have monthly summaries', async () => {
+    writeWeeklySummary('2026-W02'); // January
+    writeWeeklySummary('2026-W06'); // February
+    writeMonthlySummary('2026-01');
+
+    const result = await findUnsummarizedMonths(tmpDir);
+    expect(result).not.toContain('2026-01');
+    expect(result).toContain('2026-02');
+  });
+
+  it('excludes the current month', async () => {
+    const today = new Date();
+    const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    // Write a weekly summary that falls in the current month
+    const { getISOWeekString } = await import('../../src/utils/journal-paths.js');
+    const currentWeek = getISOWeekString(today);
+    writeWeeklySummary(currentWeek);
+
+    // Also write one for a past month
+    writeWeeklySummary('2026-W02'); // January
+
+    const result = await findUnsummarizedMonths(tmpDir);
+    expect(result).not.toContain(currentMonth);
+    expect(result).toContain('2026-01');
+  });
+
+  it('returns sorted results', async () => {
+    writeWeeklySummary('2026-W08'); // February
+    writeWeeklySummary('2026-W02'); // January
+    writeWeeklySummary('2025-W50'); // December 2025
+
+    const result = await findUnsummarizedMonths(tmpDir);
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i] > result[i - 1]).toBe(true);
+    }
+  });
+
+  it('handles boundary weeks correctly (week spanning two months)', async () => {
+    // W09 (Feb 23-Mar 1) spans Feb and March
+    // It should count for both months if we use overlap logic,
+    // but for simplicity we use the Monday's month
+    writeWeeklySummary('2026-W09');
+
+    const result = await findUnsummarizedMonths(tmpDir);
+    // W09 Monday is Feb 23, so it's a February week
+    expect(result).toContain('2026-02');
   });
 });

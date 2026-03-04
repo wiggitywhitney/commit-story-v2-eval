@@ -1,9 +1,9 @@
-// ABOUTME: Detects journal days/weeks that have content but no summary
+// ABOUTME: Detects journal days/weeks/months that have content but no summary
 // ABOUTME: Scans entries and summaries directories to find gaps for auto-trigger
 
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { getISOWeekString } from './journal-paths.js';
+import { getISOWeekString, getYearMonth } from './journal-paths.js';
 
 /**
  * Get all dates that have journal entry files.
@@ -180,6 +180,108 @@ export async function findUnsummarizedWeeks(basePath = '.') {
     // Exclude already summarized
     if (summarizedWeeks.has(weekStr)) continue;
     unsummarized.push(weekStr);
+  }
+
+  unsummarized.sort();
+  return unsummarized;
+}
+
+/**
+ * Get all month strings that have monthly summary files.
+ * @param {string} basePath - Base path for journal (default: current directory)
+ * @returns {Promise<Set<string>>} Set of month strings (YYYY-MM)
+ */
+async function getSummarizedMonths(basePath = '.') {
+  const summariesDir = join(basePath, 'journal', 'summaries', 'monthly');
+  const monthPattern = /^\d{4}-\d{2}\.md$/;
+
+  let files;
+  try {
+    files = await readdir(summariesDir);
+  } catch {
+    return new Set();
+  }
+
+  const months = new Set();
+  for (const file of files) {
+    if (monthPattern.test(file)) {
+      months.add(file.replace('.md', ''));
+    }
+  }
+  return months;
+}
+
+/**
+ * Get all week labels from weekly summary files.
+ * @param {string} basePath - Base path for journal (default: current directory)
+ * @returns {Promise<string[]>} Sorted array of week strings (YYYY-Www)
+ */
+async function getWeeksWithWeeklySummaries(basePath = '.') {
+  const summariesDir = join(basePath, 'journal', 'summaries', 'weekly');
+  const weekPattern = /^\d{4}-W\d{2}\.md$/;
+
+  let files;
+  try {
+    files = await readdir(summariesDir);
+  } catch {
+    return [];
+  }
+
+  const weeks = [];
+  for (const file of files) {
+    if (weekPattern.test(file)) {
+      weeks.push(file.replace('.md', ''));
+    }
+  }
+  weeks.sort();
+  return weeks;
+}
+
+/**
+ * Find months that have weekly summaries but no monthly summary.
+ * Excludes the current month (not yet complete).
+ * Determines a week's month from its Monday date.
+ * @param {string} basePath - Base path for journal (default: current directory)
+ * @returns {Promise<string[]>} Sorted array of unsummarized month strings (YYYY-MM)
+ */
+export async function findUnsummarizedMonths(basePath = '.') {
+  const weekLabels = await getWeeksWithWeeklySummaries(basePath);
+  if (weekLabels.length === 0) return [];
+
+  // Map week labels to their Monday's month
+  const monthsWithWeeklies = new Set();
+  for (const weekLabel of weekLabels) {
+    const match = weekLabel.match(/^(\d{4})-W(\d{2})$/);
+    if (!match) continue;
+
+    const [, yearStr, weekNumStr] = match;
+    const year = parseInt(yearStr);
+    const week = parseInt(weekNumStr);
+
+    // Calculate the Monday of this ISO week
+    const jan4 = new Date(year, 0, 4);
+    const jan4Day = jan4.getDay() || 7;
+    const week1Monday = new Date(jan4);
+    week1Monday.setDate(jan4.getDate() - (jan4Day - 1));
+
+    const monday = new Date(week1Monday);
+    monday.setDate(week1Monday.getDate() + (week - 1) * 7);
+
+    const monthStr = getYearMonth(monday);
+    monthsWithWeeklies.add(monthStr);
+  }
+
+  // Get current month to exclude it
+  const currentMonth = getYearMonth(new Date());
+
+  // Check which months already have monthly summaries
+  const summarizedMonths = await getSummarizedMonths(basePath);
+
+  const unsummarized = [];
+  for (const monthStr of monthsWithWeeklies) {
+    if (monthStr >= currentMonth) continue;
+    if (summarizedMonths.has(monthStr)) continue;
+    unsummarized.push(monthStr);
   }
 
   unsummarized.sort();

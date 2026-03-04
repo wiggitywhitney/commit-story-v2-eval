@@ -1,5 +1,5 @@
-// ABOUTME: Tests for summarize CLI command — date/week parsing, range expansion, and backfill orchestration
-// ABOUTME: Verifies argument parsing, progress output, validation, --force and --weekly flag behavior
+// ABOUTME: Tests for summarize CLI command — date/week/month parsing, range expansion, and backfill orchestration
+// ABOUTME: Verifies argument parsing, progress output, validation, --force, --weekly, and --monthly flag behavior
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
@@ -9,17 +9,21 @@ import { tmpdir } from 'node:os';
 // Mock the summary graph (LLM calls)
 const mockGenerateDailySummary = vi.fn();
 const mockGenerateWeeklySummary = vi.fn();
+const mockGenerateMonthlySummary = vi.fn();
 vi.mock('../../src/generators/summary-graph.js', () => ({
   generateDailySummary: (...args) => mockGenerateDailySummary(...args),
   generateWeeklySummary: (...args) => mockGenerateWeeklySummary(...args),
+  generateMonthlySummary: (...args) => mockGenerateMonthlySummary(...args),
 }));
 
 import {
   parseSummarizeArgs,
   expandDateRange,
   isValidWeekString,
+  isValidMonthString,
   runSummarize,
   runWeeklySummarize,
+  runMonthlySummarize,
 } from '../../src/commands/summarize.js';
 
 // ---------------------------------------------------------------------------
@@ -62,9 +66,11 @@ describe('parseSummarizeArgs', () => {
     expect(result).toEqual({
       dates: ['2026-02-22'],
       weeks: [],
+      months: [],
       force: false,
       help: false,
       weekly: false,
+      monthly: false,
       error: null,
     });
   });
@@ -466,5 +472,168 @@ describe('runWeeklySummarize', () => {
 
     expect(logs).toHaveLength(1);
     expect(logs[0]).toContain('2026-W10');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseSummarizeArgs — monthly mode
+// ---------------------------------------------------------------------------
+
+describe('parseSummarizeArgs monthly', () => {
+  it('parses --monthly with month string', () => {
+    const result = parseSummarizeArgs(['--monthly', '2026-02']);
+    expect(result.monthly).toBe(true);
+    expect(result.months).toEqual(['2026-02']);
+    expect(result.dates).toEqual([]);
+    expect(result.weeks).toEqual([]);
+    expect(result.error).toBeNull();
+  });
+
+  it('returns error for --monthly with invalid month format', () => {
+    const result = parseSummarizeArgs(['--monthly', '2026-W08']);
+    expect(result.error).toMatch(/invalid month/i);
+  });
+
+  it('returns error for --monthly with no month argument', () => {
+    const result = parseSummarizeArgs(['--monthly']);
+    expect(result.error).toMatch(/missing month/i);
+  });
+
+  it('parses --monthly with --force', () => {
+    const result = parseSummarizeArgs(['--monthly', '2026-02', '--force']);
+    expect(result.monthly).toBe(true);
+    expect(result.force).toBe(true);
+    expect(result.months).toEqual(['2026-02']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isValidMonthString
+// ---------------------------------------------------------------------------
+
+describe('isValidMonthString', () => {
+  it('accepts valid month strings', () => {
+    expect(isValidMonthString('2026-01')).toBe(true);
+    expect(isValidMonthString('2026-06')).toBe(true);
+    expect(isValidMonthString('2026-12')).toBe(true);
+  });
+
+  it('rejects invalid formats', () => {
+    expect(isValidMonthString('2026-1')).toBe(false);
+    expect(isValidMonthString('2026')).toBe(false);
+    expect(isValidMonthString('not-a-month')).toBe(false);
+    expect(isValidMonthString('2026-W08')).toBe(false);
+  });
+
+  it('rejects month 0 and month 13+', () => {
+    expect(isValidMonthString('2026-00')).toBe(false);
+    expect(isValidMonthString('2026-13')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runMonthlySummarize (integration with real filesystem, mocked LLM)
+// ---------------------------------------------------------------------------
+
+function writeWeeklySummary(weekStr, content = '# Weekly\n\nWeekly summary') {
+  const dir = join(tmpDir, 'journal', 'summaries', 'weekly');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${weekStr}.md`), content, 'utf-8');
+}
+
+describe('runMonthlySummarize', () => {
+  beforeEach(() => {
+    setupTmpDir();
+    mockGenerateMonthlySummary.mockReset();
+    mockGenerateMonthlySummary.mockResolvedValue({
+      monthInReview: 'The month was productive.',
+      accomplishments: '- Shipped feature A',
+      growth: '- Learned new patterns',
+      lookingAhead: '- Planning next month',
+      errors: [],
+    });
+  });
+
+  afterEach(() => {
+    teardownTmpDir();
+  });
+
+  it('generates monthly summary when weekly summaries exist', async () => {
+    // W06 (Feb 2-8) and W07 (Feb 9-15) are in February
+    writeWeeklySummary('2026-W06');
+    writeWeeklySummary('2026-W07');
+
+    const result = await runMonthlySummarize({
+      months: ['2026-02'],
+      force: false,
+      basePath: tmpDir,
+    });
+
+    expect(result.generated).toEqual(['2026-02']);
+    expect(result.noSummaries).toEqual([]);
+    expect(result.failed).toEqual([]);
+
+    const monthlyPath = join(tmpDir, 'journal', 'summaries', 'monthly', '2026-02.md');
+    expect(existsSync(monthlyPath)).toBe(true);
+  });
+
+  it('reports no-summaries when no weekly summaries exist for the month', async () => {
+    const result = await runMonthlySummarize({
+      months: ['2026-02'],
+      force: false,
+      basePath: tmpDir,
+    });
+
+    expect(result.generated).toEqual([]);
+    expect(result.noSummaries).toContain('2026-02');
+    expect(mockGenerateMonthlySummary).not.toHaveBeenCalled();
+  });
+
+  it('reports already-exists when monthly summary exists', async () => {
+    writeWeeklySummary('2026-W06');
+    const monthlyDir = join(tmpDir, 'journal', 'summaries', 'monthly');
+    mkdirSync(monthlyDir, { recursive: true });
+    writeFileSync(join(monthlyDir, '2026-02.md'), 'existing', 'utf-8');
+
+    const result = await runMonthlySummarize({
+      months: ['2026-02'],
+      force: false,
+      basePath: tmpDir,
+    });
+
+    expect(result.generated).toEqual([]);
+    expect(result.alreadyExists).toContain('2026-02');
+    expect(mockGenerateMonthlySummary).not.toHaveBeenCalled();
+  });
+
+  it('regenerates with --force', async () => {
+    writeWeeklySummary('2026-W06');
+    const monthlyDir = join(tmpDir, 'journal', 'summaries', 'monthly');
+    mkdirSync(monthlyDir, { recursive: true });
+    writeFileSync(join(monthlyDir, '2026-02.md'), 'existing', 'utf-8');
+
+    const result = await runMonthlySummarize({
+      months: ['2026-02'],
+      force: true,
+      basePath: tmpDir,
+    });
+
+    expect(result.generated).toEqual(['2026-02']);
+    expect(mockGenerateMonthlySummary).toHaveBeenCalled();
+  });
+
+  it('calls onProgress callback', async () => {
+    writeWeeklySummary('2026-W06');
+
+    const logs = [];
+    await runMonthlySummarize({
+      months: ['2026-02'],
+      force: false,
+      basePath: tmpDir,
+      onProgress: (msg) => logs.push(msg),
+    });
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain('2026-02');
   });
 });

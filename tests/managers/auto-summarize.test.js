@@ -1,4 +1,4 @@
-// ABOUTME: Tests for auto-summarize.js — auto-trigger logic for daily and weekly summaries
+// ABOUTME: Tests for auto-summarize.js — auto-trigger logic for daily, weekly, and monthly summaries
 // ABOUTME: Verifies gap detection integration and summary generation orchestration
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -9,12 +9,14 @@ import { tmpdir } from 'node:os';
 // Mock the summary graph (LLM calls)
 const mockGenerateDailySummary = vi.fn();
 const mockGenerateWeeklySummary = vi.fn();
+const mockGenerateMonthlySummary = vi.fn();
 vi.mock('../../src/generators/summary-graph.js', () => ({
   generateDailySummary: (...args) => mockGenerateDailySummary(...args),
   generateWeeklySummary: (...args) => mockGenerateWeeklySummary(...args),
+  generateMonthlySummary: (...args) => mockGenerateMonthlySummary(...args),
 }));
 
-import { triggerAutoSummaries, triggerAutoWeeklySummaries } from '../../src/managers/auto-summarize.js';
+import { triggerAutoSummaries, triggerAutoWeeklySummaries, triggerAutoMonthlySummaries } from '../../src/managers/auto-summarize.js';
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -52,6 +54,12 @@ function writeWeeklySummary(weekStr, content = '# Weekly\n\nWeekly summary') {
   writeFileSync(join(dir, `${weekStr}.md`), content, 'utf-8');
 }
 
+function writeMonthlySummary(monthStr, content = '# Monthly\n\nMonthly summary') {
+  const dir = join(tmpDir, 'journal', 'summaries', 'monthly');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${monthStr}.md`), content, 'utf-8');
+}
+
 // ---------------------------------------------------------------------------
 // triggerAutoSummaries
 // ---------------------------------------------------------------------------
@@ -61,6 +69,7 @@ describe('triggerAutoSummaries', () => {
     setupTmpDir();
     mockGenerateDailySummary.mockReset();
     mockGenerateWeeklySummary.mockReset();
+    mockGenerateMonthlySummary.mockReset();
     mockGenerateDailySummary.mockResolvedValue({
       narrative: 'Summary narrative',
       keyDecisions: 'Some decisions',
@@ -71,6 +80,13 @@ describe('triggerAutoSummaries', () => {
       weekInReview: 'Week narrative',
       highlights: 'Some highlights',
       patterns: 'Some patterns',
+      errors: [],
+    });
+    mockGenerateMonthlySummary.mockResolvedValue({
+      monthInReview: 'Month narrative',
+      accomplishments: 'Some accomplishments',
+      growth: 'Some growth',
+      lookingAhead: 'Some threads',
       errors: [],
     });
   });
@@ -287,5 +303,139 @@ describe('triggerAutoWeeklySummaries', () => {
     expect(logs).toHaveLength(1);
     expect(logs[0]).toContain('weekly');
     expect(logs[0]).toContain('2026-W02');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// triggerAutoMonthlySummaries
+// ---------------------------------------------------------------------------
+
+describe('triggerAutoMonthlySummaries', () => {
+  beforeEach(() => {
+    setupTmpDir();
+    mockGenerateMonthlySummary.mockReset();
+    mockGenerateMonthlySummary.mockResolvedValue({
+      monthInReview: 'Month narrative',
+      accomplishments: 'Some accomplishments',
+      growth: 'Some growth',
+      lookingAhead: 'Some threads',
+      errors: [],
+    });
+  });
+
+  afterEach(teardownTmpDir);
+
+  it('returns empty results when no weekly summaries exist', async () => {
+    const result = await triggerAutoMonthlySummaries(tmpDir);
+    expect(result.generated).toEqual([]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it('generates monthly summary for past months with weekly summaries', async () => {
+    // W02 (Jan 5-11) is in January 2026
+    writeWeeklySummary('2026-W02');
+    writeWeeklySummary('2026-W03');
+
+    const result = await triggerAutoMonthlySummaries(tmpDir);
+
+    expect(result.generated).toHaveLength(1);
+    expect(result.generated[0]).toContain('2026-01');
+  });
+
+  it('skips months that already have monthly summaries', async () => {
+    writeWeeklySummary('2026-W02'); // January
+    writeWeeklySummary('2026-W06'); // February
+    writeMonthlySummary('2026-01');
+
+    const result = await triggerAutoMonthlySummaries(tmpDir);
+
+    const janGenerated = result.generated.filter(p => p.includes('2026-01'));
+    expect(janGenerated).toHaveLength(0);
+    const febGenerated = result.generated.filter(p => p.includes('2026-02'));
+    expect(febGenerated).toHaveLength(1);
+  });
+
+  it('continues past failures', async () => {
+    writeWeeklySummary('2026-W02'); // January
+    writeWeeklySummary('2026-W06'); // February
+
+    mockGenerateMonthlySummary
+      .mockRejectedValueOnce(new Error('API error'))
+      .mockResolvedValueOnce({
+        monthInReview: 'OK',
+        accomplishments: '',
+        growth: '',
+        lookingAhead: '',
+        errors: [],
+      });
+
+    const result = await triggerAutoMonthlySummaries(tmpDir);
+
+    expect(result.failed).toHaveLength(1);
+    expect(result.generated).toHaveLength(1);
+  });
+
+  it('logs progress for monthly summaries', async () => {
+    writeWeeklySummary('2026-W02'); // January
+
+    const logs = [];
+    await triggerAutoMonthlySummaries(tmpDir, {
+      onProgress: (msg) => logs.push(msg),
+    });
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain('monthly');
+    expect(logs[0]).toContain('2026-01');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// triggerAutoSummaries chains daily → weekly → monthly
+// ---------------------------------------------------------------------------
+
+describe('triggerAutoSummaries monthly chaining', () => {
+  beforeEach(() => {
+    setupTmpDir();
+    mockGenerateDailySummary.mockReset();
+    mockGenerateWeeklySummary.mockReset();
+    mockGenerateMonthlySummary.mockReset();
+    mockGenerateDailySummary.mockResolvedValue({
+      narrative: 'Summary narrative',
+      keyDecisions: 'Some decisions',
+      openThreads: 'Some threads',
+      errors: [],
+    });
+    mockGenerateWeeklySummary.mockResolvedValue({
+      weekInReview: 'Week narrative',
+      highlights: 'Some highlights',
+      patterns: 'Some patterns',
+      errors: [],
+    });
+    mockGenerateMonthlySummary.mockResolvedValue({
+      monthInReview: 'Month narrative',
+      accomplishments: 'Some accomplishments',
+      growth: 'Some growth',
+      lookingAhead: 'Some threads',
+      errors: [],
+    });
+  });
+
+  afterEach(teardownTmpDir);
+
+  it('chains daily → weekly → monthly in triggerAutoSummaries', async () => {
+    // Set up entries for past days in January (W02)
+    writeEntry('2026-01-05');
+    writeEntry('2026-01-06');
+
+    const result = await triggerAutoSummaries(tmpDir);
+
+    // Should have generated daily, weekly, AND monthly summaries
+    const dailyGenerated = result.generated.filter(p => p.includes('daily'));
+    const weeklyGenerated = result.generated.filter(p => p.includes('weekly'));
+    const monthlyGenerated = result.generated.filter(p => p.includes('monthly'));
+
+    expect(dailyGenerated.length).toBeGreaterThanOrEqual(2);
+    expect(weeklyGenerated.length).toBeGreaterThanOrEqual(1);
+    expect(monthlyGenerated.length).toBeGreaterThanOrEqual(1);
   });
 });

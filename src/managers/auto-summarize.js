@@ -1,8 +1,8 @@
-// ABOUTME: Auto-trigger logic for daily and weekly summaries after journal entry creation
-// ABOUTME: Detects unsummarized past days/weeks and generates summaries with progress reporting
+// ABOUTME: Auto-trigger logic for daily, weekly, and monthly summaries after journal entry creation
+// ABOUTME: Detects unsummarized past days/weeks/months and generates summaries with progress reporting
 
-import { findUnsummarizedDays, findUnsummarizedWeeks } from '../utils/summary-detector.js';
-import { generateAndSaveDailySummary, generateAndSaveWeeklySummary } from './summary-manager.js';
+import { findUnsummarizedDays, findUnsummarizedWeeks, findUnsummarizedMonths } from '../utils/summary-detector.js';
+import { generateAndSaveDailySummary, generateAndSaveWeeklySummary, generateAndSaveMonthlySummary } from './summary-manager.js';
 
 /**
  * Trigger automatic daily summary generation for all unsummarized past days.
@@ -62,11 +62,14 @@ export async function triggerAutoSummaries(basePath = '.', options = {}) {
   // After daily summaries are generated, check for unsummarized weeks
   const weeklyResult = await triggerAutoWeeklySummaries(basePath, options);
 
+  // After weekly summaries are generated, check for unsummarized months
+  const monthlyResult = await triggerAutoMonthlySummaries(basePath, options);
+
   return {
-    generated: [...result.generated, ...weeklyResult.generated],
-    skipped: [...result.skipped, ...weeklyResult.skipped],
-    failed: [...result.failed, ...weeklyResult.failed],
-    errors: [...result.errors, ...weeklyResult.errors],
+    generated: [...result.generated, ...weeklyResult.generated, ...monthlyResult.generated],
+    skipped: [...result.skipped, ...weeklyResult.skipped, ...monthlyResult.skipped],
+    failed: [...result.failed, ...weeklyResult.failed, ...monthlyResult.failed],
+    errors: [...result.errors, ...weeklyResult.errors, ...monthlyResult.errors],
   };
 }
 
@@ -113,6 +116,56 @@ export async function triggerAutoWeeklySummaries(basePath = '.', options = {}) {
       result.errors.push(`${weekStr}: ${err.message}`);
       if (onProgress) {
         onProgress(`Failed to generate weekly summary for ${weekStr}: ${err.message}`);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Trigger automatic monthly summary generation for all unsummarized past months.
+ * A month is eligible when it has weekly summaries and is no longer the current month.
+ *
+ * @param {string} basePath - Base path for journal (default: current directory)
+ * @param {{ onProgress?: (msg: string) => void }} options - Options
+ * @returns {Promise<{ generated: string[], skipped: string[], failed: string[], errors: string[] }>}
+ */
+export async function triggerAutoMonthlySummaries(basePath = '.', options = {}) {
+  const { onProgress } = options;
+
+  const unsummarizedMonths = await findUnsummarizedMonths(basePath);
+
+  const result = {
+    generated: [],
+    skipped: [],
+    failed: [],
+    errors: [],
+  };
+
+  for (const monthStr of unsummarizedMonths) {
+    try {
+      const summaryResult = await generateAndSaveMonthlySummary(monthStr, basePath);
+
+      if (summaryResult.saved) {
+        result.generated.push(summaryResult.path);
+        if (onProgress) {
+          onProgress(`Generated monthly summary for ${monthStr}`);
+        }
+
+        if (summaryResult.errors && summaryResult.errors.length > 0) {
+          for (const err of summaryResult.errors) {
+            result.errors.push(`${monthStr}: ${err}`);
+          }
+        }
+      } else {
+        result.skipped.push(monthStr);
+      }
+    } catch (err) {
+      result.failed.push(monthStr);
+      result.errors.push(`${monthStr}: ${err.message}`);
+      if (onProgress) {
+        onProgress(`Failed to generate monthly summary for ${monthStr}: ${err.message}`);
       }
     }
   }

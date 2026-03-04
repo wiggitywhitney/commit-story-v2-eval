@@ -25,7 +25,7 @@ import { generateJournalSections } from './generators/journal-graph.js';
 import { saveJournalEntry, discoverReflections } from './managers/journal-manager.js';
 import { isJournalEntriesOnlyCommit, isMergeCommit, shouldSkipMergeCommit, isSafeGitRef } from './utils/commit-analyzer.js';
 import { triggerAutoSummaries } from './managers/auto-summarize.js';
-import { parseSummarizeArgs, runSummarize, runWeeklySummarize, showSummarizeHelp } from './commands/summarize.js';
+import { parseSummarizeArgs, runSummarize, runWeeklySummarize, runMonthlySummarize, showSummarizeHelp } from './commands/summarize.js';
 
 /** Exit codes */
 const EXIT_SUCCESS = 0;
@@ -99,7 +99,7 @@ Usage:
   npx commit-story summarize <date|range> [--force]
 
 Commands:
-  summarize    Generate daily summaries for journal entries
+  summarize    Generate daily, weekly, or monthly summaries
                Use --help for subcommand details
 
 Arguments:
@@ -251,6 +251,54 @@ async function handleSummarize(args) {
       console.log(`❌ Failed: ${result.failed.length} week(s)`);
       for (const weekStr of result.failed) {
         console.log(`   - ${weekStr}`);
+      }
+    }
+    if (result.errors.length > 0) {
+      console.log('');
+      console.log('⚠️  Errors:');
+      for (const err of result.errors) {
+        console.log(`   - ${err}`);
+      }
+    }
+    console.log('');
+
+    process.exit(result.failed.length > 0 ? EXIT_ERROR : EXIT_SUCCESS);
+    return;
+  }
+
+  // Monthly mode
+  if (parsed.monthly) {
+    const total = parsed.months.length;
+    console.log(`\n📊 Generating monthly summaries for ${total} month${total > 1 ? 's' : ''}...`);
+    if (parsed.force) {
+      console.log('   --force: regenerating existing summaries');
+    }
+
+    let completed = 0;
+    const result = await runMonthlySummarize({
+      months: parsed.months,
+      force: parsed.force,
+      basePath: '.',
+      onProgress: (msg) => {
+        completed++;
+        console.log(`   [${completed}/${total}] ${msg}`);
+      },
+    });
+
+    console.log('');
+    if (result.generated.length > 0) {
+      console.log(`✅ Generated: ${result.generated.length} monthly summary(ies)`);
+    }
+    if (result.noSummaries.length > 0) {
+      console.log(`⏭️  No weekly summaries: ${result.noSummaries.length} month(s)`);
+    }
+    if (result.alreadyExists.length > 0) {
+      console.log(`⏭️  Already exist: ${result.alreadyExists.length} month(s)`);
+    }
+    if (result.failed.length > 0) {
+      console.log(`❌ Failed: ${result.failed.length} month(s)`);
+      for (const monthStr of result.failed) {
+        console.log(`   - ${monthStr}`);
       }
     }
     if (result.errors.length > 0) {
@@ -442,9 +490,11 @@ async function main() {
       if (summaryResult.generated.length > 0) {
         const dailyCount = summaryResult.generated.filter(p => p.includes('daily')).length;
         const weeklyCount = summaryResult.generated.filter(p => p.includes('weekly')).length;
+        const monthlyCount = summaryResult.generated.filter(p => p.includes('monthly')).length;
         const parts = [];
         if (dailyCount > 0) parts.push(`${dailyCount} daily`);
         if (weeklyCount > 0) parts.push(`${weeklyCount} weekly`);
+        if (monthlyCount > 0) parts.push(`${monthlyCount} monthly`);
         console.log(`📊 Generated ${parts.join(' + ')} summary(ies)`);
         for (const path of summaryResult.generated) {
           debug(`   ${path}`);

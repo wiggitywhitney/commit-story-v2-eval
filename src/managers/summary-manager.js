@@ -1,9 +1,9 @@
-// ABOUTME: Orchestrates daily and weekly summary generation — reads source content, calls graph, writes output
+// ABOUTME: Orchestrates daily, weekly, and monthly summary generation — reads source content, calls graph, writes output
 // ABOUTME: Handles duplicate detection via file existence (DD-003) and force-regeneration
 
 import { readFile, writeFile, access, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { generateDailySummary, generateWeeklySummary } from '../generators/summary-graph.js';
+import { generateDailySummary, generateWeeklySummary, generateMonthlySummary } from '../generators/summary-graph.js';
 import {
   getJournalEntryPath,
   getSummaryPath,
@@ -313,6 +313,186 @@ export async function generateAndSaveWeeklySummary(weekStr, basePath = '.', opti
     saved: true,
     path,
     dayCount: dailySummaries.length,
+    errors: result.errors || [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Monthly summary pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the first and last day of a month.
+ * @param {string} monthStr - Month string like "2026-02"
+ * @returns {{ firstDay: Date, lastDay: Date }} Start and end dates of the month
+ */
+export function getMonthBoundaries(monthStr) {
+  const match = monthStr.match(/^(\d{4})-(\d{2})$/);
+  if (!match) {
+    throw new Error(`Invalid month string: "${monthStr}". Expected format: YYYY-MM`);
+  }
+
+  const [, yearStr, monthNumStr] = match;
+  const year = parseInt(yearStr);
+  const month = parseInt(monthNumStr);
+
+  if (month < 1 || month > 12) {
+    throw new Error(`Invalid month string: "${monthStr}". Expected format: YYYY-MM`);
+  }
+
+  const firstDay = new Date(year, month - 1, 1);
+  // Last day: day 0 of the next month gives the last day of the current month
+  const lastDay = new Date(year, month, 0);
+
+  return { firstDay, lastDay };
+}
+
+/**
+ * Read all weekly summaries that overlap with a given month.
+ * A week overlaps if any day of the week (Monday-Sunday) falls within the month.
+ * @param {string} monthStr - Month string like "2026-02"
+ * @param {string} basePath - Base path for journal (default: current directory)
+ * @returns {Promise<Array<{ weekLabel: string, content: string }>>} Weekly summaries sorted by week
+ */
+export async function readMonthWeeklySummaries(monthStr, basePath = '.') {
+  const { firstDay, lastDay } = getMonthBoundaries(monthStr);
+  const weeklyDir = getSummariesDirectory('weekly', basePath);
+
+  let files;
+  try {
+    files = await readdir(weeklyDir);
+  } catch {
+    return [];
+  }
+
+  const weekPattern = /^(\d{4}-W\d{2})\.md$/;
+  const summaries = [];
+
+  for (const file of files.sort()) {
+    const match = file.match(weekPattern);
+    if (!match) continue;
+
+    const weekLabel = match[1];
+
+    // Check if this week overlaps with the month
+    // Import getWeekBoundaries locally to avoid circular dependency concerns
+    const { monday, sunday } = getWeekBoundaries(weekLabel);
+
+    // Week overlaps with month if week's Sunday >= month's first day AND week's Monday <= month's last day
+    if (sunday >= firstDay && monday <= lastDay) {
+      try {
+        const content = await readFile(join(weeklyDir, file), 'utf-8');
+        if (content && content.trim()) {
+          summaries.push({ weekLabel, content: content.trim() });
+        }
+      } catch {
+        // Skip unreadable files
+      }
+    }
+  }
+
+  return summaries;
+}
+
+/**
+ * Format monthly summary sections into markdown output.
+ * @param {{ monthInReview: string, accomplishments: string, growth: string, lookingAhead: string }} sections
+ * @param {string} monthStr - Month string for the header
+ * @returns {string} Formatted markdown summary
+ */
+export function formatMonthlySummary(sections, monthStr) {
+  const lines = [];
+
+  lines.push(`# Monthly Summary — ${monthStr}`);
+  lines.push('');
+  lines.push('## Month in Review');
+  lines.push('');
+  lines.push(sections.monthInReview || '[No monthly narrative generated]');
+  lines.push('');
+  lines.push('## Accomplishments');
+  lines.push('');
+  lines.push(sections.accomplishments || 'No standout accomplishments this month.');
+  lines.push('');
+  lines.push('## Growth');
+  lines.push('');
+  lines.push(sections.growth || 'No notable growth signals this month.');
+  lines.push('');
+  lines.push('## Looking Ahead');
+  lines.push('');
+  lines.push(sections.lookingAhead || 'No open threads carrying into next month.');
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+/**
+ * Save a monthly summary to the summaries directory.
+ * Checks for existing file to prevent duplicates (DD-003).
+ * @param {string} content - Formatted markdown summary
+ * @param {string} monthStr - Month string like "2026-02"
+ * @param {string} basePath - Base path for journal (default: current directory)
+ * @param {{ force?: boolean }} options - Options
+ * @returns {Promise<string|null>} Path to saved file, or null if skipped
+ */
+export async function saveMonthlySummary(content, monthStr, basePath = '.', options = {}) {
+  const { firstDay } = getMonthBoundaries(monthStr);
+  const summaryPath = getSummaryPath('monthly', firstDay, basePath);
+
+  // Check for existing summary (DD-003)
+  if (!options.force) {
+    try {
+      await access(summaryPath);
+      return null;
+    } catch {
+      // Doesn't exist, proceed
+    }
+  }
+
+  await ensureDirectory(summaryPath);
+  await writeFile(summaryPath, content, 'utf-8');
+
+  return summaryPath;
+}
+
+/**
+ * Full pipeline: read weekly summaries for a month, generate monthly summary, save to file.
+ * @param {string} monthStr - Month string like "2026-02"
+ * @param {string} basePath - Base path for journal (default: current directory)
+ * @param {{ force?: boolean }} options - Options
+ * @returns {Promise<{ saved: boolean, path?: string, reason?: string, weekCount?: number, errors?: string[] }>}
+ */
+export async function generateAndSaveMonthlySummary(monthStr, basePath = '.', options = {}) {
+  // Check for existing summary first
+  if (!options.force) {
+    const { firstDay } = getMonthBoundaries(monthStr);
+    const summaryPath = getSummaryPath('monthly', firstDay, basePath);
+    try {
+      await access(summaryPath);
+      return { saved: false, reason: `Monthly summary already exists for ${monthStr}` };
+    } catch {
+      // Doesn't exist, proceed
+    }
+  }
+
+  // Read weekly summaries for the month
+  const weeklySummaries = await readMonthWeeklySummaries(monthStr, basePath);
+  if (weeklySummaries.length === 0) {
+    return { saved: false, reason: `Skipped ${monthStr}: no weekly summaries found` };
+  }
+
+  // Generate monthly summary via LangGraph
+  const result = await generateMonthlySummary(weeklySummaries, monthStr);
+
+  // Format the output
+  const formatted = formatMonthlySummary(result, monthStr);
+
+  // Save to file
+  const path = await saveMonthlySummary(formatted, monthStr, basePath, options);
+
+  return {
+    saved: true,
+    path,
+    weekCount: weeklySummaries.length,
     errors: result.errors || [],
   };
 }
