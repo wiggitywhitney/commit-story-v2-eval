@@ -29,8 +29,18 @@ function isValidDate(str) {
  */
 export function isValidWeekString(str) {
   if (!/^\d{4}-W\d{2}$/.test(str)) return false;
+  const year = parseInt(str.slice(0, 4));
   const week = parseInt(str.slice(6));
-  return week >= 1 && week <= 53;
+  if (week < 1 || week > 53) return false;
+  if (week === 53) {
+    // ISO week 53 exists only if Jan 1 is Thursday,
+    // or if Jan 1 is Wednesday in a leap year
+    const jan1 = new Date(year, 0, 1);
+    const jan1Day = jan1.getDay(); // 0=Sun, 4=Thu
+    const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+    if (jan1Day !== 4 && !(jan1Day === 3 && isLeap)) return false;
+  }
+  return true;
 }
 
 /**
