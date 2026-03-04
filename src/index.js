@@ -25,6 +25,7 @@ import { generateJournalSections } from './generators/journal-graph.js';
 import { saveJournalEntry, discoverReflections } from './managers/journal-manager.js';
 import { isJournalEntriesOnlyCommit, isMergeCommit, shouldSkipMergeCommit, isSafeGitRef } from './utils/commit-analyzer.js';
 import { triggerAutoSummaries } from './managers/auto-summarize.js';
+import { parseSummarizeArgs, runSummarize, showSummarizeHelp } from './commands/summarize.js';
 
 /** Exit codes */
 const EXIT_SUCCESS = 0;
@@ -46,13 +47,32 @@ function debug(...args) {
 
 /**
  * Parse command line arguments
- * @returns {{ commitRef: string, debug: boolean, help: boolean }}
+ * @returns {{ subcommand: string|null, commitRef: string, debug: boolean, help: boolean, subcommandArgs: string[] }}
  */
 function parseArgs() {
   const args = process.argv.slice(2);
 
   let commitRef = 'HEAD';
   let showHelp = false;
+  let subcommand = null;
+  const subcommandArgs = [];
+
+  // Check if first non-flag argument is a known subcommand
+  const knownSubcommands = ['summarize'];
+  const firstNonFlag = args.find(a => !a.startsWith('-'));
+  if (firstNonFlag && knownSubcommands.includes(firstNonFlag)) {
+    subcommand = firstNonFlag;
+    // Everything after the subcommand name goes to the subcommand handler
+    const subIdx = args.indexOf(firstNonFlag);
+    subcommandArgs.push(...args.slice(subIdx + 1));
+    // Still check for global --debug flag
+    for (const arg of args) {
+      if (arg === '--debug' || arg === '-d') {
+        DEBUG = true;
+      }
+    }
+    return { subcommand, commitRef, debug: DEBUG, help: false, subcommandArgs };
+  }
 
   for (const arg of args) {
     if (arg === '--debug' || arg === '-d') {
@@ -64,7 +84,7 @@ function parseArgs() {
     }
   }
 
-  return { commitRef, debug: DEBUG, help: showHelp };
+  return { subcommand, commitRef, debug: DEBUG, help: showHelp, subcommandArgs };
 }
 
 /**
@@ -76,7 +96,11 @@ Commit Story - Automated Engineering Journal
 
 Usage:
   npx commit-story [commitRef] [options]
-  node src/index.js [commitRef] [options]
+  npx commit-story summarize <date|range> [--force]
+
+Commands:
+  summarize    Generate daily summaries for journal entries
+               Use --help for subcommand details
 
 Arguments:
   commitRef    Git commit reference (default: HEAD)
@@ -87,10 +111,11 @@ Options:
   --help, -h   Show this help message
 
 Examples:
-  npx commit-story              # Generate for latest commit
-  npx commit-story HEAD~1       # Generate for previous commit
-  npx commit-story abc1234      # Generate for specific commit
-  npx commit-story --debug      # Verbose output
+  npx commit-story                              # Generate for latest commit
+  npx commit-story HEAD~1                       # Generate for previous commit
+  npx commit-story summarize 2026-02-22         # Summarize a day
+  npx commit-story summarize 2026-02-01..2026-02-20  # Summarize a range
+  npx commit-story --debug                      # Verbose output
 
 Exit codes:
   0  Success (journal entry generated)
@@ -172,15 +197,89 @@ function getPreviousCommitTime(commitRef) {
 }
 
 /**
+ * Handle the "summarize" subcommand.
+ * @param {string[]} args - Arguments after "summarize"
+ */
+async function handleSummarize(args) {
+  const parsed = parseSummarizeArgs(args);
+
+  if (parsed.help) {
+    showSummarizeHelp();
+    process.exit(EXIT_SUCCESS);
+  }
+
+  if (parsed.error) {
+    console.error(`\n❌ ${parsed.error}\n`);
+    process.exit(EXIT_ERROR);
+  }
+
+  // Validate environment (need API key for generation)
+  if (!validateEnvironment()) {
+    process.exit(EXIT_ERROR);
+  }
+
+  const total = parsed.dates.length;
+  console.log(`\n📊 Generating daily summaries for ${total} date${total > 1 ? 's' : ''}...`);
+  if (parsed.force) {
+    console.log('   --force: regenerating existing summaries');
+  }
+
+  let completed = 0;
+  const result = await runSummarize({
+    dates: parsed.dates,
+    force: parsed.force,
+    basePath: '.',
+    onProgress: (msg) => {
+      completed++;
+      console.log(`   [${completed}/${total}] ${msg}`);
+    },
+  });
+
+  // Print summary
+  console.log('');
+  if (result.generated.length > 0) {
+    console.log(`✅ Generated: ${result.generated.length} summary(ies)`);
+  }
+  if (result.noEntries.length > 0) {
+    console.log(`⏭️  No entries: ${result.noEntries.length} date(s)`);
+  }
+  if (result.alreadyExists.length > 0) {
+    console.log(`⏭️  Already exist: ${result.alreadyExists.length} date(s)`);
+  }
+  if (result.failed.length > 0) {
+    console.log(`❌ Failed: ${result.failed.length} date(s)`);
+    for (const dateStr of result.failed) {
+      console.log(`   - ${dateStr}`);
+    }
+  }
+  if (result.errors.length > 0) {
+    console.log('');
+    console.log('⚠️  Errors:');
+    for (const err of result.errors) {
+      console.log(`   - ${err}`);
+    }
+  }
+  console.log('');
+
+  process.exit(result.failed.length > 0 ? EXIT_ERROR : EXIT_SUCCESS);
+}
+
+/**
  * Main entry point
  */
 async function main() {
-  const { commitRef, help } = parseArgs();
+  const { subcommand, commitRef, help, subcommandArgs } = parseArgs();
 
   // Show help if requested
   if (help) {
     showHelp();
     process.exit(EXIT_SUCCESS);
+  }
+
+  // Route to subcommand handlers
+  if (subcommand === 'summarize') {
+    await handleSummarize(subcommandArgs);
+    return;
   }
 
   debug('Starting commit-story');

@@ -82,18 +82,18 @@ Make daily summaries automatic — detect the first commit of a new day and gene
 ---
 
 ### Milestone 3: Manual Backfill CLI
-**Status**: Not Started
+**Status**: Complete
 
 Provide a CLI command for generating summaries on demand — useful for historical backfill, regeneration, and testing.
 
 **What's included**:
-- [ ] CLI subcommand: `npx commit-story summarize [date|date-range] [--force]`
-- [ ] Date range support (inclusive endpoints, reversed ranges normalized to ascending): `npx commit-story summarize 2026-02-01..2026-02-15`
-- [ ] Single date: `npx commit-story summarize 2026-02-22`
-- [ ] `--force` flag to regenerate existing summaries
-- [ ] Progress indicator for multi-day backfill operations
-- [ ] Validation: skip dates with no entries, warn on dates with existing summaries
-- [ ] Tests for CLI argument parsing and backfill orchestration
+- [x] CLI subcommand: `npx commit-story summarize [date|date-range] [--force]`
+- [x] Date range support (inclusive endpoints, reversed ranges normalized to ascending): `npx commit-story summarize 2026-02-01..2026-02-15`
+- [x] Single date: `npx commit-story summarize 2026-02-22`
+- [x] `--force` flag to regenerate existing summaries
+- [x] Progress indicator for multi-day backfill operations
+- [x] Validation: skip dates with no entries, warn on dates with existing summaries
+- [x] Tests for CLI argument parsing and backfill orchestration
 
 **Done when**: `npx commit-story summarize 2026-02-01..2026-02-20` generates daily summaries for all days in that range that have entries, with a progress indicator
 
@@ -180,6 +180,12 @@ User-facing documentation and polish for the summary feature.
 ## Progress Log
 
 ### 2026-03-04
+- Completed Milestone 3: Manual Backfill CLI
+- Created `src/commands/summarize.js` — date parsing, range expansion, backfill orchestration
+- Added subcommand routing to `src/index.js` — detects `summarize` as first arg, routes to handler
+- Progress indicator with `[N/total]` format for multi-day operations
+- Updated `--help` output with summarize subcommand documentation
+- 22 new tests (10 arg parsing + 4 range expansion + 8 integration), all 410 tests passing
 - Completed Milestone 2: Gap Detection and Auto-Trigger
 - Created `summary-detector.js` — `findUnsummarizedDays()` and `getDaysWithEntries()` scan filesystem for gaps
 - Created `auto-summarize.js` — orchestrates sequential summary generation with error resilience and progress callbacks
