@@ -1,0 +1,1682 @@
+diff --git a/src/collectors/claude-collector.js b/src/collectors/claude-collector.js
+index 50b4e24..b550df2 100644
+--- a/src/collectors/claude-collector.js
++++ b/src/collectors/claude-collector.js
+@@ -5,10 +5,13 @@
+  * Filters by repository path and time window, groups by session.
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
+ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+ import { join } from 'node:path';
+ import { homedir } from 'node:os';
+ 
++const tracer = trace.getTracer('commit-story');
++
+ /**
+  * Get the Claude projects directory path
+  * @returns {string} Path to ~/.claude/projects/
+@@ -187,43 +190,62 @@ export function groupBySession(messages) {
+  * @returns {Promise<ChatData>} Collected chat data
+  */
+ export async function collectChatMessages(repoPath, commitTime, previousCommitTime) {
+-  const projectPath = getClaudeProjectPath(repoPath);
+-
+-  if (!projectPath) {
+-    return {
+-      messages: [],
+-      sessions: new Map(),
+-      sessionCount: 0,
+-      messageCount: 0,
+-      timeWindow: {
+-        start: previousCommitTime,
+-        end: commitTime,
+-      },
+-    };
+-  }
+-
+-  const jsonlFiles = findJSONLFiles(projectPath);
+-  let allMessages = [];
+-
+-  for (const filePath of jsonlFiles) {
+-    const fileMessages = parseJSONLFile(filePath);
+-    const filtered = filterMessages(fileMessages, repoPath, previousCommitTime, commitTime);
+-    allMessages = allMessages.concat(filtered);
+-  }
++  return tracer.startActiveSpan('commit_story.context.collect', async (span) => {
++    try {
++      span.setAttribute('commit_story.context.source', 'claude_code');
++      span.setAttribute('commit_story.context.time_window_start', previousCommitTime.toISOString());
++      span.setAttribute('commit_story.context.time_window_end', commitTime.toISOString());
++
++      const projectPath = getClaudeProjectPath(repoPath);
++
++      if (!projectPath) {
++        span.setAttribute('commit_story.context.sessions_count', 0);
++        span.setAttribute('commit_story.context.messages_count', 0);
++        return {
++          messages: [],
++          sessions: new Map(),
++          sessionCount: 0,
++          messageCount: 0,
++          timeWindow: {
++            start: previousCommitTime,
++            end: commitTime,
++          },
++        };
++      }
++
++      const jsonlFiles = findJSONLFiles(projectPath);
++      let allMessages = [];
++
++      for (const filePath of jsonlFiles) {
++        const fileMessages = parseJSONLFile(filePath);
++        const filtered = filterMessages(fileMessages, repoPath, previousCommitTime, commitTime);
++        allMessages = allMessages.concat(filtered);
++      }
++
++      // Sort all messages chronologically
++      allMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
++
++      const sessions = groupBySession(allMessages);
++
++      span.setAttribute('commit_story.context.sessions_count', sessions.size);
++      span.setAttribute('commit_story.context.messages_count', allMessages.length);
+ 
+-  // Sort all messages chronologically
+-  allMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+-
+-  const sessions = groupBySession(allMessages);
+-
+-  return {
+-    messages: allMessages,
+-    sessions,
+-    sessionCount: sessions.size,
+-    messageCount: allMessages.length,
+-    timeWindow: {
+-      start: previousCommitTime,
+-      end: commitTime,
+-    },
+-  };
++      return {
++        messages: allMessages,
++        sessions,
++        sessionCount: sessions.size,
++        messageCount: allMessages.length,
++        timeWindow: {
++          start: previousCommitTime,
++          end: commitTime,
++        },
++      };
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+diff --git a/src/collectors/git-collector.js b/src/collectors/git-collector.js
+index 7d2e51e..8e250e1 100644
+--- a/src/collectors/git-collector.js
++++ b/src/collectors/git-collector.js
+@@ -5,10 +5,12 @@
+  * to prevent context pollution in AI generation.
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
+ import { execFile } from 'node:child_process';
+ import { promisify } from 'node:util';
+ 
+ const execFileAsync = promisify(execFile);
++const tracer = trace.getTracer('commit-story');
+ 
+ /**
+  * Run a git command and return stdout
+@@ -117,14 +119,25 @@ async function getMergeInfo(commitRef = 'HEAD') {
+  * @returns {Promise<Date|null>} - Previous commit timestamp, null if first commit
+  */
+ export async function getPreviousCommitTime(commitRef = 'HEAD') {
+-  const output = await runGit(['log', '-2', '--format=%aI', commitRef]);
+-  const timestamps = output.trim().split('\n');
+-
+-  if (timestamps.length < 2) {
+-    return null; // First commit, no previous
+-  }
++  return tracer.startActiveSpan('getPreviousCommitTime', async (span) => {
++    try {
++      span.setAttribute('vcs.ref.head.revision', commitRef);
++      const output = await runGit(['log', '-2', '--format=%aI', commitRef]);
++      const timestamps = output.trim().split('\n');
++
++      if (timestamps.length < 2) {
++        return null; // First commit, no previous
++      }
+ 
+-  return new Date(timestamps[1]);
++      return new Date(timestamps[1]);
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+ 
+ /**
+@@ -133,15 +146,30 @@ export async function getPreviousCommitTime(commitRef = 'HEAD') {
+  * @returns {Promise<CommitData>}
+  */
+ export async function getCommitData(commitRef = 'HEAD') {
+-  const [metadata, diff, mergeInfo] = await Promise.all([
+-    getCommitMetadata(commitRef),
+-    getCommitDiff(commitRef),
+-    getMergeInfo(commitRef),
+-  ]);
+-
+-  return {
+-    ...metadata,
+-    diff,
+-    ...mergeInfo,
+-  };
++  return tracer.startActiveSpan('getCommitData', async (span) => {
++    try {
++      span.setAttribute('vcs.ref.head.revision', commitRef);
++      const [metadata, diff, mergeInfo] = await Promise.all([
++        getCommitMetadata(commitRef),
++        getCommitDiff(commitRef),
++        getMergeInfo(commitRef),
++      ]);
++
++      span.setAttribute('commit_story.commit.author', metadata.author);
++      span.setAttribute('commit_story.commit.message', metadata.subject);
++      span.setAttribute('commit_story.commit.timestamp', metadata.timestamp.toISOString());
++
++      return {
++        ...metadata,
++        diff,
++        ...mergeInfo,
++      };
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+diff --git a/src/index.js b/src/index.js
+index 99c2808..a275892 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -15,6 +15,7 @@
+  *   2 - Skipped (journal-only commit, empty merge)
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
+ import './utils/config.js'; // Load environment variables first
+ import { execFileSync } from 'node:child_process';
+ import { gatherContextForCommit } from './integrators/context-integrator.js';
+@@ -22,6 +23,8 @@ import { generateJournalSections } from './generators/journal-graph.js';
+ import { saveJournalEntry, discoverReflections } from './managers/journal-manager.js';
+ import { isJournalEntriesOnlyCommit, isMergeCommit, shouldSkipMergeCommit, isSafeGitRef } from './utils/commit-analyzer.js';
+ 
++const tracer = trace.getTracer('commit-story');
++
+ /** Exit codes */
+ const EXIT_SUCCESS = 0;
+ const EXIT_ERROR = 1;
+@@ -171,115 +174,139 @@ function getPreviousCommitTime(commitRef) {
+  * Main entry point
+  */
+ async function main() {
+-  const { commitRef, help } = parseArgs();
++  return tracer.startActiveSpan('commit_story.generate_journal', async (span) => {
++    try {
++      const { commitRef, help } = parseArgs();
+ 
+-  // Show help if requested
+-  if (help) {
+-    showHelp();
+-    process.exit(EXIT_SUCCESS);
+-  }
++      span.setAttribute('vcs.ref.head.revision', commitRef);
+ 
+-  debug('Starting commit-story');
+-  debug('Commit ref:', commitRef);
++      // Show help if requested
++      if (help) {
++        showHelp();
++        span.end();
++        process.exit(EXIT_SUCCESS);
++      }
+ 
+-  // Validate git repository
+-  if (!isGitRepository()) {
+-    console.error(`
++      debug('Starting commit-story');
++      debug('Commit ref:', commitRef);
++
++      // Validate git repository
++      if (!isGitRepository()) {
++        console.error(`
+ ❌ Not a git repository
+    Run commit-story from within a git repository.
+ `);
+-    process.exit(EXIT_ERROR);
+-  }
++        span.end();
++        process.exit(EXIT_ERROR);
++      }
+ 
+-  // Validate commit reference
+-  if (!isValidCommitRef(commitRef)) {
+-    console.error(`
++      // Validate commit reference
++      if (!isValidCommitRef(commitRef)) {
++        console.error(`
+ ❌ Invalid commit reference: ${commitRef}
+    Check that the commit exists: git log --oneline
+ `);
+-    process.exit(EXIT_ERROR);
+-  }
+-
+-  // Validate environment
+-  if (!validateEnvironment()) {
+-    process.exit(EXIT_ERROR);
+-  }
+-
+-  // Check skip conditions BEFORE expensive context collection
+-  debug('Checking skip conditions...');
+-
+-  // Skip journal-entries-only commits
+-  if (isJournalEntriesOnlyCommit(commitRef)) {
+-    console.log(`
++        span.end();
++        process.exit(EXIT_ERROR);
++      }
++
++      // Validate environment
++      if (!validateEnvironment()) {
++        span.end();
++        process.exit(EXIT_ERROR);
++      }
++
++      // Check skip conditions BEFORE expensive context collection
++      debug('Checking skip conditions...');
++
++      // Skip journal-entries-only commits
++      if (isJournalEntriesOnlyCommit(commitRef)) {
++        console.log(`
+ ⏭️  Skipping: only journal entries changed
+    This commit only modified journal/entries/ files.
+ `);
+-    process.exit(EXIT_SKIPPED);
+-  }
+-
+-  // Check for merge commits
+-  const mergeInfo = isMergeCommit(commitRef);
+-  debug('Merge commit:', mergeInfo.isMerge);
+-
+-  // Gather context
+-  debug('Gathering context...');
+-  const context = await gatherContextForCommit(commitRef);
+-  debug('Context gathered:', {
+-    messageCount: context.chat?.messageCount || 0,
+-    diffLength: context.commit?.diff?.length || 0,
+-  });
+-
+-  // Skip empty merge commits (no chat AND no diff)
+-  if (mergeInfo.isMerge) {
+-    const hasChat = context.chat && context.chat.messageCount > 0;
+-    const hasDiff = context.commit && context.commit.diff && context.commit.diff.trim().length > 0;
+-
+-    if (!hasChat && !hasDiff) {
+-      console.log(`
++        span.end();
++        process.exit(EXIT_SKIPPED);
++      }
++
++      // Check for merge commits
++      const mergeInfo = isMergeCommit(commitRef);
++      debug('Merge commit:', mergeInfo.isMerge);
++
++      // Gather context
++      debug('Gathering context...');
++      const context = await gatherContextForCommit(commitRef);
++      debug('Context gathered:', {
++        messageCount: context.chat?.messageCount || 0,
++        diffLength: context.commit?.diff?.length || 0,
++      });
++
++      span.setAttribute('commit_story.context.source', 'git');
++      span.setAttribute('commit_story.context.messages_count', context.chat?.messageCount || 0);
++
++      // Skip empty merge commits (no chat AND no diff)
++      if (mergeInfo.isMerge) {
++        const hasChat = context.chat && context.chat.messageCount > 0;
++        const hasDiff = context.commit && context.commit.diff && context.commit.diff.trim().length > 0;
++
++        if (!hasChat && !hasDiff) {
++          console.log(`
+ ⏭️  Skipping: merge commit with no changes
+    This merge commit has no chat context or code changes.
+ `);
+-      process.exit(EXIT_SKIPPED);
+-    }
+-    debug('Processing merge commit with:', { hasChat, hasDiff });
+-  }
+-
+-  // Generate journal sections
+-  debug('Generating journal sections...');
+-  const sections = await generateJournalSections(context);
+-  debug('Sections generated:', {
+-    hasSummary: !!sections.summary,
+-    hasDialogue: !!sections.dialogue,
+-    hasTechnical: !!sections.technicalDecisions,
+-    errors: sections.errors?.length || 0,
+-  });
+-
+-  // Discover reflections for time window
+-  const previousCommitTime = getPreviousCommitTime(commitRef);
+-  const currentCommitTime = context.commit.timestamp;
+-  debug('Reflection window:', { from: previousCommitTime, to: currentCommitTime });
++          span.end();
++          process.exit(EXIT_SKIPPED);
++        }
++        debug('Processing merge commit with:', { hasChat, hasDiff });
++      }
++
++      // Generate journal sections
++      debug('Generating journal sections...');
++      const sections = await generateJournalSections(context);
++      debug('Sections generated:', {
++        hasSummary: !!sections.summary,
++        hasDialogue: !!sections.dialogue,
++        hasTechnical: !!sections.technicalDecisions,
++        errors: sections.errors?.length || 0,
++      });
++
++      // Discover reflections for time window
++      const previousCommitTime = getPreviousCommitTime(commitRef);
++      const currentCommitTime = context.commit.timestamp;
++      debug('Reflection window:', { from: previousCommitTime, to: currentCommitTime });
++
++      const reflections = await discoverReflections(previousCommitTime, currentCommitTime);
++      debug('Reflections found:', reflections.length);
++
++      // Save journal entry
++      debug('Saving journal entry...');
++      const savedPath = await saveJournalEntry(sections, context.commit, reflections, '.', { debug });
++
++      span.setAttribute('commit_story.journal.file_path', savedPath);
+ 
+-  const reflections = await discoverReflections(previousCommitTime, currentCommitTime);
+-  debug('Reflections found:', reflections.length);
+-
+-  // Save journal entry
+-  debug('Saving journal entry...');
+-  const savedPath = await saveJournalEntry(sections, context.commit, reflections, '.', { debug });
+-
+-  console.log(`
++      console.log(`
+ ✅ Journal entry saved
+    ${savedPath}
+ `);
+ 
+-  // Log any generation errors
+-  if (sections.errors && sections.errors.length > 0) {
+-    console.log('⚠️  Some sections had generation issues:');
+-    for (const err of sections.errors) {
+-      console.log(`   - ${err}`);
++      // Log any generation errors
++      if (sections.errors && sections.errors.length > 0) {
++        console.log('⚠️  Some sections had generation issues:');
++        for (const err of sections.errors) {
++          console.log(`   - ${err}`);
++        }
++      }
++
++      span.end();
++      process.exit(EXIT_SUCCESS);
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
+     }
+-  }
+-
+-  process.exit(EXIT_SUCCESS);
++  });
+ }
+ 
+ // Run main function
+diff --git a/src/instrumentation.js b/src/instrumentation.js
+new file mode 100644
+index 0000000..7903a96
+--- /dev/null
++++ b/src/instrumentation.js
+@@ -0,0 +1,11 @@
++// ABOUTME: OpenTelemetry SDK initialization for commit-story-v2.
++// ABOUTME: Bootstraps the NodeSDK with instrumentation array for the telemetry agent to populate.
++
++const { NodeSDK } = require('@opentelemetry/sdk-node');
++const { TraceloopNodeServerSdk } = require('@traceloop/node-server-sdk');
++
++const sdk = new NodeSDK({
++  instrumentations: [new TraceloopNodeServerSdk()],
++});
++
++sdk.start();
+diff --git a/src/integrators/context-integrator.js b/src/integrators/context-integrator.js
+index 8fb36c8..280ed66 100644
+--- a/src/integrators/context-integrator.js
++++ b/src/integrators/context-integrator.js
+@@ -6,12 +6,15 @@
+  * token budget limits, and sensitive data redaction.
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
+ import { getCommitData, getPreviousCommitTime } from '../collectors/git-collector.js';
+ import { collectChatMessages } from '../collectors/claude-collector.js';
+ import { filterMessages, groupFilteredBySession } from './filters/message-filter.js';
+ import { applyTokenBudget, estimateTokens } from './filters/token-filter.js';
+ import { applySensitiveFilter } from './filters/sensitive-filter.js';
+ 
++const tracer = trace.getTracer('commit_story');
++
+ /**
+  * Gather all context for a commit
+  * @param {string} commitRef - Git commit reference (default: HEAD)
+@@ -24,86 +27,111 @@ import { applySensitiveFilter } from './filters/sensitive-filter.js';
+  * @returns {Promise<Context>} Gathered and filtered context
+  */
+ export async function gatherContextForCommit(commitRef = 'HEAD', options = {}) {
+-  const {
+-    repoPath = process.cwd(),
+-    tokenBudget = 150000,
+-    diffBudget = 50000,
+-    chatBudget = 80000,
+-    redactEmails = false,
+-  } = options;
+-
+-  // 1. Collect git data
+-  const commitData = await getCommitData(commitRef);
+-
+-  // 2. Get previous commit time for chat window
+-  const previousCommitTime = await getPreviousCommitTime(commitRef);
+-
+-  // 3. Collect chat messages
+-  let chatData;
+-  if (previousCommitTime) {
+-    chatData = await collectChatMessages(repoPath, commitData.timestamp, previousCommitTime);
+-  } else {
+-    // First commit - use 24 hours before as window
+-    const dayBefore = new Date(commitData.timestamp.getTime() - 24 * 60 * 60 * 1000);
+-    chatData = await collectChatMessages(repoPath, commitData.timestamp, dayBefore);
+-  }
+-
+-  // 4. Filter chat messages
+-  const { messages: filteredMessages, stats: filterStats } = filterMessages(chatData.messages);
+-
+-  // 5. Group filtered messages by session
+-  const filteredSessions = groupFilteredBySession(filteredMessages);
+-
+-  // 6. Build initial context object
+-  let context = {
+-    commit: {
+-      hash: commitData.hash,
+-      shortHash: commitData.shortHash,
+-      message: commitData.message,
+-      subject: commitData.subject,
+-      author: commitData.author,
+-      authorEmail: commitData.authorEmail,
+-      timestamp: commitData.timestamp,
+-      diff: commitData.diff,
+-      isMerge: commitData.isMerge,
+-      parentCount: commitData.parentCount,
+-    },
+-    chat: {
+-      messages: filteredMessages,
+-      sessions: filteredSessions,
+-      messageCount: filteredMessages.length,
+-      sessionCount: filteredSessions.size,
+-    },
+-    metadata: {
+-      previousCommitTime,
+-      timeWindow: {
+-        start: previousCommitTime || new Date(commitData.timestamp.getTime() - 24 * 60 * 60 * 1000),
+-        end: commitData.timestamp,
+-      },
+-      filterStats: {
+-        totalMessages: filterStats.total,
+-        filteredMessages: filterStats.filtered,
+-        preservedMessages: filterStats.preserved,
+-        substantialUserMessages: filterStats.substantialUserMessages,
+-        filterReasons: filterStats.byReason,
+-      },
+-      tokenEstimate: 0, // Will be calculated after budget applied
+-    },
+-  };
+-
+-  // 7. Apply token budget limits
+-  context = applyTokenBudget(context, {
+-    totalBudget: tokenBudget,
+-    diffBudget,
+-    chatBudget,
+-  });
+-
+-  // 8. Apply sensitive data redaction
+-  context = applySensitiveFilter(context, {
+-    redactEmails,
++  return tracer.startActiveSpan('commit_story.gather_context', async (span) => {
++    try {
++      const {
++        repoPath = process.cwd(),
++        tokenBudget = 150000,
++        diffBudget = 50000,
++        chatBudget = 80000,
++        redactEmails = false,
++      } = options;
++
++      // 1. Collect git data
++      const commitData = await getCommitData(commitRef);
++
++      span.setAttribute('vcs.ref.head.revision', commitData.hash);
++      span.setAttribute('commit_story.commit.author', commitData.author);
++      span.setAttribute('commit_story.commit.message', commitData.subject);
++      span.setAttribute('commit_story.commit.timestamp', commitData.timestamp.toISOString());
++
++      // 2. Get previous commit time for chat window
++      const previousCommitTime = await getPreviousCommitTime(commitRef);
++
++      // 3. Collect chat messages
++      let chatData;
++      if (previousCommitTime) {
++        chatData = await collectChatMessages(repoPath, commitData.timestamp, previousCommitTime);
++      } else {
++        // First commit - use 24 hours before as window
++        const dayBefore = new Date(commitData.timestamp.getTime() - 24 * 60 * 60 * 1000);
++        chatData = await collectChatMessages(repoPath, commitData.timestamp, dayBefore);
++      }
++
++      // 4. Filter chat messages
++      const { messages: filteredMessages, stats: filterStats } = filterMessages(chatData.messages);
++
++      span.setAttribute('commit_story.filter.type', 'noise_removal');
++      span.setAttribute('commit_story.filter.messages_before', filterStats.total);
++      span.setAttribute('commit_story.filter.messages_after', filterStats.preserved);
++
++      // 5. Group filtered messages by session
++      const filteredSessions = groupFilteredBySession(filteredMessages);
++
++      span.setAttribute('commit_story.context.messages_count', filteredMessages.length);
++      span.setAttribute('commit_story.context.sessions_count', filteredSessions.size);
++
++      // 6. Build initial context object
++      let context = {
++        commit: {
++          hash: commitData.hash,
++          shortHash: commitData.shortHash,
++          message: commitData.message,
++          subject: commitData.subject,
++          author: commitData.author,
++          authorEmail: commitData.authorEmail,
++          timestamp: commitData.timestamp,
++          diff: commitData.diff,
++          isMerge: commitData.isMerge,
++          parentCount: commitData.parentCount,
++        },
++        chat: {
++          messages: filteredMessages,
++          sessions: filteredSessions,
++          messageCount: filteredMessages.length,
++          sessionCount: filteredSessions.size,
++        },
++        metadata: {
++          previousCommitTime,
++          timeWindow: {
++            start: previousCommitTime || new Date(commitData.timestamp.getTime() - 24 * 60 * 60 * 1000),
++            end: commitData.timestamp,
++          },
++          filterStats: {
++            totalMessages: filterStats.total,
++            filteredMessages: filterStats.filtered,
++            preservedMessages: filterStats.preserved,
++            substantialUserMessages: filterStats.substantialUserMessages,
++            filterReasons: filterStats.byReason,
++          },
++          tokenEstimate: 0, // Will be calculated after budget applied
++        },
++      };
++
++      // 7. Apply token budget limits
++      context = applyTokenBudget(context, {
++        totalBudget: tokenBudget,
++        diffBudget,
++        chatBudget,
++      });
++
++      // 8. Apply sensitive data redaction
++      context = applySensitiveFilter(context, {
++        redactEmails,
++      });
++
++      span.setAttribute('commit_story.context.time_window_start', context.metadata.timeWindow.start.toISOString());
++      span.setAttribute('commit_story.context.time_window_end', context.metadata.timeWindow.end.toISOString());
++
++      return context;
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
+   });
+-
+-  return context;
+ }
+ 
+ /**
+diff --git a/src/integrators/filters/message-filter.js b/src/integrators/filters/message-filter.js
+index ae60d3e..a3baf38 100644
+--- a/src/integrators/filters/message-filter.js
++++ b/src/integrators/filters/message-filter.js
+@@ -6,6 +6,10 @@
+  * while preserving human/assistant dialogue and context capture tool calls.
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
++
++const tracer = trace.getTracer('commit_story');
++
+ /**
+  * Detect if a message is too short to be meaningful dialogue
+  *
+@@ -204,101 +208,116 @@ function extractTextContent(message) {
+  * @returns {object} Filtered messages and stats
+  */
+ export function filterMessages(messages) {
+-  const filtered = [];
+-  const stats = {
+-    total: messages.length,
+-    filtered: 0,
+-    preserved: 0,
+-    // Tracks user messages with meaningful content (50+ chars, not simple commands)
+-    // Used downstream to determine if there's enough discussion for dialogue/decision extraction
+-    substantialUserMessages: 0,
+-    byReason: {
+-      noType: 0,
+-      wrongType: 0,
+-      isMeta: 0,
+-      emptyContent: 0,
+-      toolUse: 0,
+-      toolResult: 0,
+-      planInjection: 0,
+-      systemNoise: 0,
+-      tooShort: 0,
+-    },
+-  };
+-
+-  for (const message of messages) {
+-    if (shouldFilterMessage(message)) {
+-      stats.filtered++;
+-
+-      // Track reason for filtering
+-      if (!message.type) {
+-        stats.byReason.noType++;
+-      } else if (!['user', 'assistant'].includes(message.type)) {
+-        stats.byReason.wrongType++;
+-      } else if (message.isMeta === true) {
+-        stats.byReason.isMeta++;
+-      } else {
+-        const content = message.message?.content;
+-        if (!content || (typeof content === 'string' && !content.trim())) {
+-          stats.byReason.emptyContent++;
+-        } else if (Array.isArray(content)) {
+-          if (content.some((c) => c.type === 'tool_result')) {
+-            stats.byReason.toolResult++;
+-          } else if (content.some((c) => c.type === 'tool_use')) {
+-            stats.byReason.toolUse++;
++  return tracer.startActiveSpan('filterMessages', (span) => {
++    try {
++      span.setAttribute('commit_story.filter.type', 'noise_removal');
++      span.setAttribute('commit_story.filter.messages_before', messages.length);
++
++      const filtered = [];
++      const stats = {
++        total: messages.length,
++        filtered: 0,
++        preserved: 0,
++        // Tracks user messages with meaningful content (50+ chars, not simple commands)
++        // Used downstream to determine if there's enough discussion for dialogue/decision extraction
++        substantialUserMessages: 0,
++        byReason: {
++          noType: 0,
++          wrongType: 0,
++          isMeta: 0,
++          emptyContent: 0,
++          toolUse: 0,
++          toolResult: 0,
++          planInjection: 0,
++          systemNoise: 0,
++          tooShort: 0,
++        },
++      };
++
++      for (const message of messages) {
++        if (shouldFilterMessage(message)) {
++          stats.filtered++;
++
++          // Track reason for filtering
++          if (!message.type) {
++            stats.byReason.noType++;
++          } else if (!['user', 'assistant'].includes(message.type)) {
++            stats.byReason.wrongType++;
++          } else if (message.isMeta === true) {
++            stats.byReason.isMeta++;
+           } else {
+-            stats.byReason.emptyContent++;
++            const content = message.message?.content;
++            if (!content || (typeof content === 'string' && !content.trim())) {
++              stats.byReason.emptyContent++;
++            } else if (Array.isArray(content)) {
++              if (content.some((c) => c.type === 'tool_result')) {
++                stats.byReason.toolResult++;
++              } else if (content.some((c) => c.type === 'tool_use')) {
++                stats.byReason.toolUse++;
++              } else {
++                stats.byReason.emptyContent++;
++              }
++            }
++          }
++        } else {
++          // Additional checks for user messages
++          const textContent = extractTextContent(message);
++
++          // Filter system noise (bash output, commands, system tags)
++          if (message.type === 'user' && isSystemNoiseMessage(textContent)) {
++            stats.filtered++;
++            stats.byReason.systemNoise++;
++            continue;
+           }
+-        }
+-      }
+-    } else {
+-      // Additional checks for user messages
+-      const textContent = extractTextContent(message);
+-
+-      // Filter system noise (bash output, commands, system tags)
+-      if (message.type === 'user' && isSystemNoiseMessage(textContent)) {
+-        stats.filtered++;
+-        stats.byReason.systemNoise++;
+-        continue;
+-      }
+ 
+-      // Filter plan-injection messages (AI-generated plans pasted as user messages)
+-      if (message.type === 'user' && isPlanInjectionMessage(textContent)) {
+-        stats.filtered++;
+-        stats.byReason.planInjection++;
+-        continue;
+-      }
++          // Filter plan-injection messages (AI-generated plans pasted as user messages)
++          if (message.type === 'user' && isPlanInjectionMessage(textContent)) {
++            stats.filtered++;
++            stats.byReason.planInjection++;
++            continue;
++          }
+ 
+-      // Filter very short messages (3 chars or less) - not meaningful dialogue
+-      if (message.type === 'user' && isTooShortMessage(textContent)) {
+-        stats.filtered++;
+-        stats.byReason.tooShort++;
+-        continue;
+-      }
++          // Filter very short messages (3 chars or less) - not meaningful dialogue
++          if (message.type === 'user' && isTooShortMessage(textContent)) {
++            stats.filtered++;
++            stats.byReason.tooShort++;
++            continue;
++          }
+ 
+-      stats.preserved++;
++          stats.preserved++;
++
++          // Track substantial user messages for downstream quality checks
++          if (message.type === 'user' && isSubstantialMessage(textContent)) {
++            stats.substantialUserMessages++;
++          }
+ 
+-      // Track substantial user messages for downstream quality checks
+-      if (message.type === 'user' && isSubstantialMessage(textContent)) {
+-        stats.substantialUserMessages++;
++          filtered.push({
++            uuid: message.uuid,
++            sessionId: message.sessionId,
++            type: message.type,
++            timestamp: message.timestamp,
++            content: textContent,
++            // Preserve context capture info if present
++            isContextCapture: Array.isArray(message.message?.content)
++              ? message.message.content.some(
++                  (c) => c.type === 'tool_use' && c.name === 'journal_capture_context'
++                )
++              : false,
++          });
++        }
+       }
+ 
+-      filtered.push({
+-        uuid: message.uuid,
+-        sessionId: message.sessionId,
+-        type: message.type,
+-        timestamp: message.timestamp,
+-        content: textContent,
+-        // Preserve context capture info if present
+-        isContextCapture: Array.isArray(message.message?.content)
+-          ? message.message.content.some(
+-              (c) => c.type === 'tool_use' && c.name === 'journal_capture_context'
+-            )
+-          : false,
+-      });
+-    }
+-  }
++      span.setAttribute('commit_story.filter.messages_after', filtered.length);
+ 
+-  return { messages: filtered, stats };
++      return { messages: filtered, stats };
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+ 
+ /**
+diff --git a/src/integrators/filters/token-filter.js b/src/integrators/filters/token-filter.js
+index e986eb8..12ae6c3 100644
+--- a/src/integrators/filters/token-filter.js
++++ b/src/integrators/filters/token-filter.js
+@@ -5,6 +5,10 @@
+  * Truncates large diffs first, then older messages if needed.
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
++
++const tracer = trace.getTracer('commit_story');
++
+ /**
+  * Estimate token count using character-based heuristic
+  * Claude uses ~4 characters per token on average
+@@ -40,42 +44,60 @@ function formatMessagesForEstimation(messages) {
+  * @returns {object} Truncated diff and metadata
+  */
+ export function truncateDiff(diff, maxTokens) {
+-  if (!diff) {
+-    return { diff: '', truncated: false, originalTokens: 0 };
+-  }
+-
+-  const originalTokens = estimateTokens(diff);
+-
+-  if (originalTokens <= maxTokens) {
+-    return { diff, truncated: false, originalTokens };
+-  }
+-
+-  // Calculate target character length
+-  const targetChars = Math.floor(maxTokens * 3.5);
+-
+-  // Try to truncate at a file boundary (diff --git line)
+-  const truncated = diff.substring(0, targetChars);
+-  const lastFileStart = truncated.lastIndexOf('\ndiff --git ');
+-
+-  let finalDiff;
+-  if (lastFileStart > targetChars * 0.5) {
+-    // Keep complete files up to the boundary
+-    finalDiff = truncated.substring(0, lastFileStart);
+-  } else {
+-    // Just truncate at character limit and add indicator
+-    finalDiff = truncated;
+-  }
+-
+-  // Add truncation indicator
+-  const truncationMessage = `\n\n[DIFF TRUNCATED - Original: ${originalTokens} tokens, Shown: ~${estimateTokens(finalDiff)} tokens]`;
+-  const finalDiffWithMessage = finalDiff + truncationMessage;
+-
+-  return {
+-    diff: finalDiffWithMessage,
+-    truncated: true,
+-    originalTokens,
+-    shownTokens: estimateTokens(finalDiffWithMessage),
+-  };
++  return tracer.startActiveSpan('truncateDiff', (span) => {
++    try {
++      span.setAttribute('commit_story.filter.type', 'token_budget');
++
++      if (!diff) {
++        span.setAttribute('commit_story.filter.tokens_before', 0);
++        span.setAttribute('commit_story.filter.tokens_after', 0);
++        return { diff: '', truncated: false, originalTokens: 0 };
++      }
++
++      const originalTokens = estimateTokens(diff);
++      span.setAttribute('commit_story.filter.tokens_before', originalTokens);
++
++      if (originalTokens <= maxTokens) {
++        span.setAttribute('commit_story.filter.tokens_after', originalTokens);
++        return { diff, truncated: false, originalTokens };
++      }
++
++      // Calculate target character length
++      const targetChars = Math.floor(maxTokens * 3.5);
++
++      // Try to truncate at a file boundary (diff --git line)
++      const truncated = diff.substring(0, targetChars);
++      const lastFileStart = truncated.lastIndexOf('\ndiff --git ');
++
++      let finalDiff;
++      if (lastFileStart > targetChars * 0.5) {
++        // Keep complete files up to the boundary
++        finalDiff = truncated.substring(0, lastFileStart);
++      } else {
++        // Just truncate at character limit and add indicator
++        finalDiff = truncated;
++      }
++
++      // Add truncation indicator
++      const truncationMessage = `\n\n[DIFF TRUNCATED - Original: ${originalTokens} tokens, Shown: ~${estimateTokens(finalDiff)} tokens]`;
++      const finalDiffWithMessage = finalDiff + truncationMessage;
++
++      span.setAttribute('commit_story.filter.tokens_after', estimateTokens(finalDiffWithMessage));
++
++      return {
++        diff: finalDiffWithMessage,
++        truncated: true,
++        originalTokens,
++        shownTokens: estimateTokens(finalDiffWithMessage),
++      };
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+ 
+ /**
+@@ -86,37 +108,61 @@ export function truncateDiff(diff, maxTokens) {
+  * @returns {object} Truncated messages and metadata
+  */
+ export function truncateMessages(messages, maxTokens) {
+-  if (!messages || messages.length === 0) {
+-    return { messages: [], truncated: false, originalCount: 0 };
+-  }
+-
+-  const originalCount = messages.length;
+-  const fullText = formatMessagesForEstimation(messages);
+-  const originalTokens = estimateTokens(fullText);
+-
+-  if (originalTokens <= maxTokens) {
+-    return { messages, truncated: false, originalCount, originalTokens };
+-  }
+-
+-  // Remove oldest messages until we fit
+-  // Messages should already be sorted chronologically
+-  let truncatedMessages = [...messages];
+-  let currentTokens = originalTokens;
+-
+-  while (truncatedMessages.length > 1 && currentTokens > maxTokens) {
+-    // Remove oldest (first) message
+-    truncatedMessages.shift();
+-    currentTokens = estimateTokens(formatMessagesForEstimation(truncatedMessages));
+-  }
+-
+-  return {
+-    messages: truncatedMessages,
+-    truncated: true,
+-    originalCount,
+-    preservedCount: truncatedMessages.length,
+-    originalTokens,
+-    finalTokens: currentTokens,
+-  };
++  return tracer.startActiveSpan('truncateMessages', (span) => {
++    try {
++      span.setAttribute('commit_story.filter.type', 'token_budget');
++
++      if (!messages || messages.length === 0) {
++        span.setAttribute('commit_story.filter.messages_before', 0);
++        span.setAttribute('commit_story.filter.messages_after', 0);
++        span.setAttribute('commit_story.filter.tokens_before', 0);
++        span.setAttribute('commit_story.filter.tokens_after', 0);
++        return { messages: [], truncated: false, originalCount: 0 };
++      }
++
++      const originalCount = messages.length;
++      const fullText = formatMessagesForEstimation(messages);
++      const originalTokens = estimateTokens(fullText);
++
++      span.setAttribute('commit_story.filter.messages_before', originalCount);
++      span.setAttribute('commit_story.filter.tokens_before', originalTokens);
++
++      if (originalTokens <= maxTokens) {
++        span.setAttribute('commit_story.filter.messages_after', originalCount);
++        span.setAttribute('commit_story.filter.tokens_after', originalTokens);
++        return { messages, truncated: false, originalCount, originalTokens };
++      }
++
++      // Remove oldest messages until we fit
++      // Messages should already be sorted chronologically
++      let truncatedMessages = [...messages];
++      let currentTokens = originalTokens;
++
++      while (truncatedMessages.length > 1 && currentTokens > maxTokens) {
++        // Remove oldest (first) message
++        truncatedMessages.shift();
++        currentTokens = estimateTokens(formatMessagesForEstimation(truncatedMessages));
++      }
++
++      span.setAttribute('commit_story.filter.messages_after', truncatedMessages.length);
++      span.setAttribute('commit_story.filter.tokens_after', currentTokens);
++
++      return {
++        messages: truncatedMessages,
++        truncated: true,
++        originalCount,
++        preservedCount: truncatedMessages.length,
++        originalTokens,
++        finalTokens: currentTokens,
++      };
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+ 
+ /**
+@@ -127,71 +173,85 @@ export function truncateMessages(messages, maxTokens) {
+  * @returns {object} Context with budget applied
+  */
+ export function applyTokenBudget(context, options = {}) {
+-  const { totalBudget = 150000, diffBudget = 50000, chatBudget = 80000 } = options;
+-
+-  const result = {
+-    ...context,
+-    metadata: {
+-      ...context.metadata,
+-      tokenBudget: {
+-        total: totalBudget,
+-        diffBudget,
+-        chatBudget,
+-      },
+-    },
+-  };
+-
+-  // 1. Estimate commit metadata tokens (always included)
+-  const commitMetaTokens = estimateTokens(
+-    JSON.stringify({
+-      hash: context.commit.hash,
+-      message: context.commit.message,
+-      author: context.commit.author,
+-      timestamp: context.commit.timestamp,
+-    })
+-  );
+-
+-  // 2. Process diff with budget
+-  const diffResult = truncateDiff(context.commit.diff, diffBudget);
+-  result.commit = {
+-    ...context.commit,
+-    diff: diffResult.diff,
+-  };
+-  result.metadata.tokenBudget.diffTruncated = diffResult.truncated;
+-  result.metadata.tokenBudget.diffOriginalTokens = diffResult.originalTokens;
+-
+-  // 3. Process messages with budget
+-  const messageResult = truncateMessages(context.chat.messages, chatBudget);
+-  result.chat = {
+-    ...context.chat,
+-    messages: messageResult.messages,
+-  };
+-  result.metadata.tokenBudget.messagesTruncated = messageResult.truncated;
+-  if (messageResult.truncated) {
+-    result.metadata.tokenBudget.messagesOriginalCount = messageResult.originalCount;
+-    result.metadata.tokenBudget.messagesPreservedCount = messageResult.preservedCount;
+-  }
+-
+-  // 4. Calculate final token estimate
+-  let diffTokens = estimateTokens(diffResult.diff);
+-  let chatTokens = estimateTokens(formatMessagesForEstimation(messageResult.messages));
+-  let tokenEstimate = commitMetaTokens + diffTokens + chatTokens;
+-
+-  // 5. Enforce totalBudget - if still over, truncate messages further
+-  if (tokenEstimate > totalBudget && result.chat.messages.length > 1) {
+-    const remainingBudget = totalBudget - commitMetaTokens - diffTokens;
+-    if (remainingBudget > 0) {
+-      const furtherTruncation = truncateMessages(result.chat.messages, remainingBudget);
+-      result.chat.messages = furtherTruncation.messages;
+-      result.metadata.tokenBudget.messagesTruncated = true;
+-      result.metadata.tokenBudget.messagesOriginalCount = messageResult.originalCount;
+-      result.metadata.tokenBudget.messagesPreservedCount = furtherTruncation.messages.length;
+-      chatTokens = estimateTokens(formatMessagesForEstimation(furtherTruncation.messages));
+-      tokenEstimate = commitMetaTokens + diffTokens + chatTokens;
+-    }
+-  }
++  return tracer.startActiveSpan('applyTokenBudget', (span) => {
++    try {
++      span.setAttribute('commit_story.filter.type', 'token_budget');
++
++      const { totalBudget = 150000, diffBudget = 50000, chatBudget = 80000 } = options;
+ 
+-  result.metadata.tokenEstimate = tokenEstimate;
++      const result = {
++        ...context,
++        metadata: {
++          ...context.metadata,
++          tokenBudget: {
++            total: totalBudget,
++            diffBudget,
++            chatBudget,
++          },
++        },
++      };
+ 
+-  return result;
++      // 1. Estimate commit metadata tokens (always included)
++      const commitMetaTokens = estimateTokens(
++        JSON.stringify({
++          hash: context.commit.hash,
++          message: context.commit.message,
++          author: context.commit.author,
++          timestamp: context.commit.timestamp,
++        })
++      );
++
++      // 2. Process diff with budget
++      const diffResult = truncateDiff(context.commit.diff, diffBudget);
++      result.commit = {
++        ...context.commit,
++        diff: diffResult.diff,
++      };
++      result.metadata.tokenBudget.diffTruncated = diffResult.truncated;
++      result.metadata.tokenBudget.diffOriginalTokens = diffResult.originalTokens;
++
++      // 3. Process messages with budget
++      const messageResult = truncateMessages(context.chat.messages, chatBudget);
++      result.chat = {
++        ...context.chat,
++        messages: messageResult.messages,
++      };
++      result.metadata.tokenBudget.messagesTruncated = messageResult.truncated;
++      if (messageResult.truncated) {
++        result.metadata.tokenBudget.messagesOriginalCount = messageResult.originalCount;
++        result.metadata.tokenBudget.messagesPreservedCount = messageResult.preservedCount;
++      }
++
++      // 4. Calculate final token estimate
++      let diffTokens = estimateTokens(diffResult.diff);
++      let chatTokens = estimateTokens(formatMessagesForEstimation(messageResult.messages));
++      let tokenEstimate = commitMetaTokens + diffTokens + chatTokens;
++
++      // 5. Enforce totalBudget - if still over, truncate messages further
++      if (tokenEstimate > totalBudget && result.chat.messages.length > 1) {
++        const remainingBudget = totalBudget - commitMetaTokens - diffTokens;
++        if (remainingBudget > 0) {
++          const furtherTruncation = truncateMessages(result.chat.messages, remainingBudget);
++          result.chat.messages = furtherTruncation.messages;
++          result.metadata.tokenBudget.messagesTruncated = true;
++          result.metadata.tokenBudget.messagesOriginalCount = messageResult.originalCount;
++          result.metadata.tokenBudget.messagesPreservedCount = furtherTruncation.messages.length;
++          chatTokens = estimateTokens(formatMessagesForEstimation(furtherTruncation.messages));
++          tokenEstimate = commitMetaTokens + diffTokens + chatTokens;
++        }
++      }
++
++      result.metadata.tokenEstimate = tokenEstimate;
++
++      span.setAttribute('commit_story.filter.tokens_after', tokenEstimate);
++
++      return result;
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+diff --git a/src/mcp/server.js b/src/mcp/server.js
+index df02d63..105d4cb 100644
+--- a/src/mcp/server.js
++++ b/src/mcp/server.js
+@@ -20,11 +20,14 @@
+  *   }
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
+ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+ import { registerReflectionTool } from './tools/reflection-tool.js';
+ import { registerContextCaptureTool } from './tools/context-capture-tool.js';
+ 
++const tracer = trace.getTracer('commit-story');
++
+ /**
+  * Create and configure the MCP server
+  * @returns {McpServer}
+@@ -46,13 +49,25 @@ function createServer() {
+  * Main entry point
+  */
+ async function main() {
+-  const server = createServer();
+-  const transport = new StdioServerTransport();
++  return tracer.startActiveSpan('commit_story.mcp.server.start', async (span) => {
++    try {
++      const server = createServer();
++      const transport = new StdioServerTransport();
++
++      await server.connect(transport);
+ 
+-  await server.connect(transport);
++      span.setAttribute('commit_story.context.source', 'mcp');
+ 
+-  // Log to stderr (stdout is reserved for JSON-RPC)
+-  console.error('Commit Story MCP Server running on stdio');
++      // Log to stderr (stdout is reserved for JSON-RPC)
++      console.error('Commit Story MCP Server running on stdio');
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+ 
+ // Run the server
+diff --git a/src/mcp/tools/context-capture-tool.js b/src/mcp/tools/context-capture-tool.js
+index 2d20100..5b6e273 100644
+--- a/src/mcp/tools/context-capture-tool.js
++++ b/src/mcp/tools/context-capture-tool.js
+@@ -9,6 +9,7 @@
+  * - Comprehensive context: When user just says "capture context"
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
+ import { z } from 'zod';
+ import { mkdir, appendFile } from 'node:fs/promises';
+ import { dirname, join } from 'node:path';
+@@ -16,6 +17,8 @@ import { dirname, join } from 'node:path';
+ /** Separator bar for entries */
+ const SEPARATOR = '═══════════════════════════════════════';
+ 
++const tracer = trace.getTracer('commit_story');
++
+ /**
+  * Get the context file path for a date
+  * @param {Date} date
+@@ -67,17 +70,28 @@ ${SEPARATOR}
+  * @returns {Promise<string>} - The path where the context was saved
+  */
+ async function saveContext(text) {
+-  const now = new Date();
+-  const filePath = getContextPath(now);
++  return tracer.startActiveSpan('context.save', async (span) => {
++    try {
++      const now = new Date();
++      const filePath = getContextPath(now);
+ 
+-  // Ensure directory exists
+-  await mkdir(dirname(filePath), { recursive: true });
++      // Ensure directory exists
++      await mkdir(dirname(filePath), { recursive: true });
+ 
+-  // Format and append the entry
+-  const entry = formatContextEntry(text, now);
+-  await appendFile(filePath, entry, 'utf-8');
++      // Format and append the entry
++      const entry = formatContextEntry(text, now);
++      await appendFile(filePath, entry, 'utf-8');
+ 
+-  return filePath;
++      span.setAttribute('commit_story.journal.file_path', filePath);
++      return filePath;
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+ 
+ /**
+@@ -96,26 +110,34 @@ export function registerContextCaptureTool(server) {
+       text: z.string().describe('The context to capture'),
+     },
+     async ({ text }) => {
+-      try {
+-        const savedPath = await saveContext(text);
+-        return {
+-          content: [
+-            {
+-              type: 'text',
+-              text: `Context saved to ${savedPath}`,
+-            },
+-          ],
+-        };
+-      } catch (error) {
+-        return {
+-          content: [
+-            {
+-              type: 'text',
+-              text: `Error saving context: ${error.message}`,
+-            },
+-          ],
+-        };
+-      }
++      return tracer.startActiveSpan('journal_capture_context', async (span) => {
++        try {
++          span.setAttribute('commit_story.context.source', 'mcp');
++          const savedPath = await saveContext(text);
++          span.setAttribute('commit_story.journal.file_path', savedPath);
++          return {
++            content: [
++              {
++                type: 'text',
++                text: `Context saved to ${savedPath}`,
++              },
++            ],
++          };
++        } catch (error) {
++          span.recordException(error);
++          span.setStatus({ code: SpanStatusCode.ERROR });
++          return {
++            content: [
++              {
++                type: 'text',
++                text: `Error saving context: ${error.message}`,
++              },
++            ],
++          };
++        } finally {
++          span.end();
++        }
++      });
+     }
+   );
+ }
+diff --git a/src/mcp/tools/reflection-tool.js b/src/mcp/tools/reflection-tool.js
+index 4c12c08..f2fbe73 100644
+--- a/src/mcp/tools/reflection-tool.js
++++ b/src/mcp/tools/reflection-tool.js
+@@ -5,10 +5,13 @@
+  * Writes to journal/reflections/YYYY-MM/YYYY-MM-DD.md
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
+ import { z } from 'zod';
+ import { mkdir, appendFile } from 'node:fs/promises';
+ import { dirname, join } from 'node:path';
+ 
++const tracer = trace.getTracer('commit_story');
++
+ /** Separator bar for entries */
+ const SEPARATOR = '═══════════════════════════════════════';
+ 
+@@ -63,17 +66,28 @@ ${SEPARATOR}
+  * @returns {Promise<string>} - The path where the reflection was saved
+  */
+ async function saveReflection(text) {
+-  const now = new Date();
+-  const filePath = getReflectionsPath(now);
++  return tracer.startActiveSpan('saveReflection', async (span) => {
++    try {
++      const now = new Date();
++      const filePath = getReflectionsPath(now);
+ 
+-  // Ensure directory exists
+-  await mkdir(dirname(filePath), { recursive: true });
++      // Ensure directory exists
++      await mkdir(dirname(filePath), { recursive: true });
+ 
+-  // Format and append the entry
+-  const entry = formatReflectionEntry(text, now);
+-  await appendFile(filePath, entry, 'utf-8');
++      // Format and append the entry
++      const entry = formatReflectionEntry(text, now);
++      await appendFile(filePath, entry, 'utf-8');
+ 
+-  return filePath;
++      span.setAttribute('commit_story.journal.file_path', filePath);
++      return filePath;
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw error;
++    } finally {
++      span.end();
++    }
++  });
+ }
+ 
+ /**
+@@ -88,26 +102,34 @@ export function registerReflectionTool(server) {
+       text: z.string().describe('The reflection text, verbatim from the user'),
+     },
+     async ({ text }) => {
+-      try {
+-        const savedPath = await saveReflection(text);
+-        return {
+-          content: [
+-            {
+-              type: 'text',
+-              text: `Reflection saved to ${savedPath}`,
+-            },
+-          ],
+-        };
+-      } catch (error) {
+-        return {
+-          content: [
+-            {
+-              type: 'text',
+-              text: `Error saving reflection: ${error.message}`,
+-            },
+-          ],
+-        };
+-      }
++      return tracer.startActiveSpan('journal_add_reflection', async (span) => {
++        try {
++          const savedPath = await saveReflection(text);
++          span.setAttribute('commit_story.journal.file_path', savedPath);
++          span.setAttribute('commit_story.context.source', 'mcp');
++          return {
++            content: [
++              {
++                type: 'text',
++                text: `Reflection saved to ${savedPath}`,
++              },
++            ],
++          };
++        } catch (error) {
++          span.recordException(error);
++          span.setStatus({ code: SpanStatusCode.ERROR });
++          return {
++            content: [
++              {
++                type: 'text',
++                text: `Error saving reflection: ${error.message}`,
++              },
++            ],
++          };
++        } finally {
++          span.end();
++        }
++      });
+     }
+   );
+ }
+diff --git a/src/utils/commit-analyzer.js b/src/utils/commit-analyzer.js
+index 7bc87be..6428d1d 100644
+--- a/src/utils/commit-analyzer.js
++++ b/src/utils/commit-analyzer.js
+@@ -5,8 +5,11 @@
+  * Checks for journal-only commits and merge commits.
+  */
+ 
++import { trace, SpanStatusCode } from '@opentelemetry/api';
+ import { execFileSync } from 'node:child_process';
+ 
++const tracer = trace.getTracer('commit-story');
++
+ /**
+  * Validate that a string is a safe git ref (no shell metacharacters)
+  * Prevents command injection attacks from untrusted input.
+@@ -31,14 +34,21 @@ export function getChangedFiles(commitRef) {
+   if (!isSafeGitRef(commitRef)) {
+     return [];
+   }
+-  try {
+-    const output = execFileSync('git', ['diff-tree', '--no-commit-id', '--name-only', '-r', commitRef], {
+-      encoding: 'utf-8',
+-    });
+-    return output.trim().split('\n').filter(Boolean);
+-  } catch {
+-    return [];
+-  }
++  return tracer.startActiveSpan('commit_story.get_changed_files', (span) => {
++    try {
++      span.setAttribute('vcs.ref.head.revision', commitRef);
++      const output = execFileSync('git', ['diff-tree', '--no-commit-id', '--name-only', '-r', commitRef], {
++        encoding: 'utf-8',
++      });
++      return output.trim().split('\n').filter(Boolean);
++    } catch {
++      span.recordException(new Error('git diff-tree command failed'));
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      return [];
++    } finally {
++      span.end();
++    }
++  });
+ }
+ 
+ /**
+@@ -73,22 +83,29 @@ export function isMergeCommit(commitRef) {
+   if (!isSafeGitRef(commitRef)) {
+     return { isMerge: false, parentCount: 1 };
+   }
+-  try {
+-    // Get commit object and count parent lines
+-    const output = execFileSync('git', ['cat-file', '-p', commitRef], { encoding: 'utf-8' });
+-    const parentLines = output.split('\n').filter((line) => line.startsWith('parent '));
+-    const parentCount = parentLines.length;
+-
+-    return {
+-      isMerge: parentCount > 1,
+-      parentCount,
+-    };
+-  } catch {
+-    return {
+-      isMerge: false,
+-      parentCount: 1,
+-    };
+-  }
++  return tracer.startActiveSpan('commit_story.is_merge_commit', (span) => {
++    try {
++      span.setAttribute('vcs.ref.head.revision', commitRef);
++      // Get commit object and count parent lines
++      const output = execFileSync('git', ['cat-file', '-p', commitRef], { encoding: 'utf-8' });
++      const parentLines = output.split('\n').filter((line) => line.startsWith('parent '));
++      const parentCount = parentLines.length;
++
++      return {
++        isMerge: parentCount > 1,
++        parentCount,
++      };
++    } catch {
++      span.recordException(new Error('git cat-file command failed'));
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      return {
++        isMerge: false,
++        parentCount: 1,
++      };
++    } finally {
++      span.end();
++    }
++  });
+ }
+ 
+ /**
+@@ -131,24 +148,35 @@ export function getCommitMetadata(commitRef) {
+   if (!isSafeGitRef(commitRef)) {
+     throw new Error(`Invalid commit reference: ${commitRef}`);
+   }
+-  try {
+-    // Get formatted commit info
+-    const format = '%H%n%h%n%s%n%an%n%ae%n%cI';
+-    const output = execFileSync('git', ['log', '-1', `--format=${format}`, commitRef], {
+-      encoding: 'utf-8',
+-    });
+-
+-    const [hash, shortHash, subject, author, authorEmail, timestamp] = output.trim().split('\n');
+-
+-    return {
+-      hash,
+-      shortHash,
+-      subject,
+-      author,
+-      authorEmail,
+-      timestamp: new Date(timestamp),
+-    };
+-  } catch (error) {
+-    throw new Error(`Failed to get commit metadata: ${error.message}`);
+-  }
++  return tracer.startActiveSpan('commit_story.get_commit_metadata', (span) => {
++    try {
++      span.setAttribute('vcs.ref.head.revision', commitRef);
++      // Get formatted commit info
++      const format = '%H%n%h%n%s%n%an%n%ae%n%cI';
++      const output = execFileSync('git', ['log', '-1', `--format=${format}`, commitRef], {
++        encoding: 'utf-8',
++      });
++
++      const [hash, shortHash, subject, author, authorEmail, timestamp] = output.trim().split('\n');
++
++      span.setAttribute('commit_story.commit.author', author);
++      span.setAttribute('commit_story.commit.message', subject);
++      span.setAttribute('commit_story.commit.timestamp', timestamp);
++
++      return {
++        hash,
++        shortHash,
++        subject,
++        author,
++        authorEmail,
++        timestamp: new Date(timestamp),
++      };
++    } catch (error) {
++      span.recordException(error);
++      span.setStatus({ code: SpanStatusCode.ERROR });
++      throw new Error(`Failed to get commit metadata: ${error.message}`);
++    } finally {
++      span.end();
++    }
++  });
+ }

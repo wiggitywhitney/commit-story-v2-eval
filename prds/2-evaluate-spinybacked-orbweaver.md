@@ -1,6 +1,6 @@
 # PRD #2: Evaluate SpinybackedOrbWeaver Telemetry Agent Against commit-story-v2-eval
 
-**Status:** Draft
+**Status:** In Progress
 **Created:** 2026-03-07
 **GitHub Issue:** [#2](https://github.com/wiggitywhitney/commit-story-v2-eval/issues/2)
 
@@ -38,8 +38,8 @@ SpinybackedOrbWeaver has three interfaces: CLI (`orb init` / `orb instrument`), 
 
 ## Milestones
 
-- [ ] **Pre-flight verification** — SpinybackedOrbWeaver builds and runs against this repo: Weaver schema validates, `orb init` succeeds, `orb instrument --dry-run` produces a cost ceiling without errors. Rubric codebase mapping verified against current source; any mapping drift documented.
-- [ ] **Evaluation run** — `orb instrument` executed against `src/` directory. All output captured (instrumented files, agent notes, token usage, cost). Results committed to `evaluation/run-2` branch. Any failures documented with failure mode; any patches documented with rationale.
+- [x] **Pre-flight verification** — SpinybackedOrbWeaver builds and runs against this repo: Weaver schema validates, `orb init` succeeds, single-file dry-run confirms tool works end-to-end. Rubric codebase mapping verified against current source; any mapping drift documented.
+- [x] **Evaluation run** — `orb instrument` executed against `src/` directory (21 files). 17/21 succeeded, 4 failed. All output captured in `evaluation/run-2/` (log, diffs, summary). Instrumented code on branch `orb/instrument-1773326732807`. Zero manual patches needed.
 - [ ] **Rubric scoring** — Full rubric applied to instrumented output: 4 gate checks first (any gate failure = overall fail), then 27 quality rules. Per-rule pass/fail with evidence (specific code locations, span names, attribute usage). Overall pass rate and per-dimension scores calculated.
 - [ ] **Baseline comparison** — Run-2 results compared against evaluation/run-1 baseline. Key metrics: overall pass rate (was 79%), per-dimension scores (Non-Destructiveness was 100%, Schema Fidelity was 33%), files instrumented vs skipped, manual patches required (was 3), total cost (was ~$5.50–6.50 across 8 attempts), system-level reliability (first-try success?).
 - [ ] **Gap analysis and synthesis** — New rubric gaps documented (last time found 3: CDQ-008 tracer naming, RST-004 I/O boundary exception, CDQ-007 conditional attributes). Regressions documented. Findings filed as issues on spinybacked-orbweaver repo. Spec gaps documented for potential v3.10 update.
@@ -55,6 +55,8 @@ SpinybackedOrbWeaver has three interfaces: CLI (`orb init` / `orb instrument`), 
 | `orb instrument` fails on first attempt | Document failure mode, apply minimal patches (as done in run-1 where 3 patches were needed), and document what was patched and why. |
 | Rubric doesn't cover new failure modes | Gap analysis milestone specifically looks for new rubric gaps to inform rubric evolution. |
 | Cost exceeds budget | `orb instrument --dry-run` provides cost ceiling in pre-flight. Previous run was ~$5.50–6.50 across 8 attempts. |
+| Datadog proxy intercepts Anthropic API calls | Unset `ANTHROPIC_BASE_URL` and `ANTHROPIC_CUSTOM_HEADERS` env vars when running `orb`. |
+| `orb init` prerequisites (OTel API peer dep, SDK init file, schema path) | Documented setup steps: `npm install --save-peer @opentelemetry/api`, create `src/instrumentation.js`, symlink `semconv/` → `telemetry/registry/`. |
 
 ## Prior Art
 
@@ -70,6 +72,11 @@ SpinybackedOrbWeaver has three interfaces: CLI (`orb init` / `orb instrument`), 
 |------|----------|-----------|
 | 2026-03-07 | Use CLI interface for evaluation | CLI (`orb init` / `orb instrument`) is the primary interface; MCP and GitHub Action are secondary |
 | 2026-03-07 | Manual branch creation for results | Phase 7 (git workflow) not yet complete; manual branching is sufficient for evaluation |
+| 2026-03-12 | Skip full dry-run, proceed directly to instrumentation | Single-file dry-run (`src/utils/config.js`) confirmed tool works. Full dry-run cost ceiling (21 files, ~$39 max) was already shown. No value in dry-running all 21 files before the real run. |
+| 2026-03-12 | Unset Datadog proxy env vars when running `orb` | `ANTHROPIC_BASE_URL` and `ANTHROPIC_CUSTOM_HEADERS` from Datadog shell integration route API calls through a proxy requiring a `source` header. Workaround: `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_CUSTOM_HEADERS` prefix. |
+| 2026-03-12 | Symlink `semconv/` → `telemetry/registry/` for schema detection | `orb init` searches for `semconv/`, `schema/`, or `semantic-conventions/` in project root. This repo's schema lives at `telemetry/registry/`. Symlink is least invasive. |
+| 2026-03-12 | Created `src/instrumentation.js` SDK bootstrap | `orb init` requires an OTel SDK init file with NodeSDK pattern. Created minimal file with empty `instrumentations` array for the agent to populate. |
+| 2026-03-12 | Bug found: `orb instrument` swallows per-file error messages | `instrument-handler.ts` `onFileComplete` callback only prints "failed" without reason or error detail. Fixed locally in spinybacked-orbweaver — to be filed as an issue. |
 
 ---
 

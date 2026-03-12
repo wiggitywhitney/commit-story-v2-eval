@@ -4,8 +4,8 @@ A complete rebuild of commit-story using modern tooling (LangGraph) with zero te
 
 ## Project Constraints
 
-- The app ships with NO instrumentation. Do not add telemetry — an AI instrumentation agent will add it in Phase 3.
 - **Build order**: Phase 1 (LangGraph rebuild, this repo) → Phase 2 (OTel Weaver schema) → Phase 3 (Telemetry Agent)
+- Phase 3 (Telemetry Agent) is now in progress — SpinybackedOrbWeaver adds instrumentation to this codebase.
 
 ## YOLO Workflow Mode
 
@@ -27,7 +27,6 @@ For CodeRabbit reviews, act on recommendations without waiting for user confirma
 
 This project will be distributed as an npm package. Keep production dependencies minimal:
 - Only include what's strictly necessary for core functionality
-- When Phase 3 adds telemetry, use targeted OTel packages, NOT auto-instrumentations
 - Consider bundling strategy for distribution
 - Regularly audit package size: `du -sh node_modules/` and `npm ls --prod`
 
@@ -38,7 +37,7 @@ This project will be distributed as an npm package. Keep production dependencies
 - **LangGraph** (`@langchain/langgraph` v1.1.0) for AI orchestration
 - **LangChain** for model integrations
 - **Node.js** with ES modules
-- **No telemetry** - this will be added by an instrumentation agent later
+- **Telemetry** via SpinybackedOrbWeaver (OTel instrumentation agent)
 
 ## Testing Strategy
 
