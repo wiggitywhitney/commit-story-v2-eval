@@ -76,7 +76,7 @@ SpinybackedOrbWeaver has three interfaces: CLI (`orb init` / `orb instrument`), 
 | 2026-03-12 | Unset Datadog proxy env vars when running `orb` | `ANTHROPIC_BASE_URL` and `ANTHROPIC_CUSTOM_HEADERS` from Datadog shell integration route API calls through a proxy requiring a `source` header. Workaround: `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_CUSTOM_HEADERS` prefix. |
 | 2026-03-12 | Symlink `semconv/` → `telemetry/registry/` for schema detection | `orb init` searches for `semconv/`, `schema/`, or `semantic-conventions/` in project root. This repo's schema lives at `telemetry/registry/`. Symlink is least invasive. |
 | 2026-03-12 | Created `src/instrumentation.js` SDK bootstrap | `orb init` requires an OTel SDK init file with NodeSDK pattern. Created minimal file with empty `instrumentations` array for the agent to populate. |
-| 2026-03-12 | Bug found: `orb instrument` swallows per-file error messages | `instrument-handler.ts` `onFileComplete` callback only prints "failed" without reason or error detail. Fixed locally in spinybacked-orbweaver — to be filed as an issue. |
+| 2026-03-12 | Bug found: `orb instrument` swallows per-file error messages | `instrument-handler.ts` `onFileComplete` callback only prints "failed" without reason or error detail. Filed as part of gap analysis; related issues filed on spinybacked-orbweaver (#61–#69). |
 
 ---
 

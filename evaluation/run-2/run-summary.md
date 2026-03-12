@@ -102,7 +102,7 @@ This should be consistent across all files. The package name is `commit-story` (
 | Files correctly skipped | 3 | 7 |
 | Failures | System-level (CLI unwired, validation broken) | Per-file (token budget, LLM transient) |
 | Manual patches needed | 3 | 0 |
-| Total cost | ~$5.50–6.50 across 8 attempts | TBD (single run) |
+| Total cost | ~$5.50–6.50 across 8 attempts | ~$0.12 (single run, CLI does not report exact cost) |
 | Retry gap bugs | N/A (validation chain broken) | 2 (elision + null output not retried) |
 | Quality issues | N/A | 3 (tracer naming, mega-bundle, CJS in ESM) |
 
