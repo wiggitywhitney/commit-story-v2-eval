@@ -1,6 +1,6 @@
 # PRD #2: Evaluate SpinybackedOrbWeaver Telemetry Agent Against commit-story-v2-eval
 
-**Status:** In Progress
+**Status:** Complete
 **Created:** 2026-03-07
 **GitHub Issue:** [#2](https://github.com/wiggitywhitney/commit-story-v2-eval/issues/2)
 
@@ -42,7 +42,7 @@ SpinybackedOrbWeaver has three interfaces: CLI (`orb init` / `orb instrument`), 
 - [x] **Evaluation run** — `orb instrument` executed against `src/` directory (21 files). 17/21 succeeded, 4 failed. All output captured in `evaluation/run-2/` (log, diffs, summary). Instrumented code on branch `orb/instrument-1773326732807`. Zero manual patches needed.
 - [x] **Rubric scoring** — Full 31-rule rubric scored in `evaluation/run-2/rubric-scores.md`. Gates: 4/4 pass. Quality rules: 20/27 pass (74%), 2 partial, 5 fail. Strongest: Restraint 5/5 (100%), NDS 2/2 (100%). Weakest: API 0/3 (0% — mega-bundle + CJS in ESM + SDK in prod deps). Key failures: SCH-001 (span naming), CDQ-008 (tracer naming inconsistency), API-002/003/004 (all in instrumentation.js/package.json).
 - [x] **Baseline comparison** — Full comparison in `evaluation/run-2/baseline-comparison.md`. System reliability: catastrophic → first-try success. Quality: 79% → 74% (not apples-to-apples: 4 TS files vs 21 JS files). Manual patches: 3 → 0. Attempts: 8 → 1. Improved: restraint (100%), schema fidelity (75%), language detection, zero patches. Regressed: API dependency model (0%), tracer naming inconsistency. Non-destructiveness and code quality maintained.
-- [ ] **Gap analysis and synthesis** — New rubric gaps documented (last time found 3: CDQ-008 tracer naming, RST-004 I/O boundary exception, CDQ-007 conditional attributes). Regressions documented. Findings filed as issues on spinybacked-orbweaver repo. Spec gaps documented for potential v3.10 update.
+- [x] **Gap analysis and synthesis** — Full analysis in `evaluation/run-2/gap-analysis.md`. Found 5 bugs, 4 spec gaps, 3 rubric gaps. 9 issues filed on spinybacked-orbweaver (#61-#69) with fix instructions referencing run-2 evaluation artifacts. Bugs: mega-bundle (#61), CJS in ESM (#62), retry loop gap (#63), tracer naming (#64), span naming (#65). Spec gaps: module system detection (#66), SDK placement (#67), retry classification (#68), token budget strategy (#69). Rubric gaps: API-004 SDK setup carve-out, coverage partial scoring, module system correctness rule.
 
 ---
 
