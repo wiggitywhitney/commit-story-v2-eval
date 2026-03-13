@@ -1,6 +1,6 @@
 # PRD #3: Evaluation Run-3 — SpinybackedOrbWeaver with Fixes Applied
 
-**Status:** Draft
+**Status:** In Progress
 **Created:** 2026-03-12
 **GitHub Issue:** [#3](https://github.com/wiggitywhitney/commit-story-v2-eval/issues/3)
 **Depends on:** PRD #2 (run-2 complete, findings documented)
@@ -73,12 +73,13 @@ Two-phase approach:
 ## Milestones
 
 - [x] **File run-2 findings on spinybacked-orbweaver** — 9 issues filed (#61-#69): 5 bugs (mega-bundle, CJS in ESM, retry loop gap, tracer naming, span naming) + 4 spec gaps (module system detection, SDK placement, retry classification, token budget strategy). Each issue references `commit-story-v2-eval/evaluation/run-2/` documentation (gap-analysis.md, rubric-scores.md, relevant diffs). See `evaluation/run-2/gap-analysis.md` for the full analysis.
-- [ ] **Pre-run preparation** — Verify fixes are applied in spinybacked-orbweaver: check that issues #61-#65 (bugs) are closed or have merged PRs. Reset codebase to pre-instrumentation state (clean `src/` from run-2 changes). Verify `.env`, `orb.yaml`, `semconv/` symlink, `src/instrumentation.js` are in place. Review orb internals: understand retry behavior (maxFixAttempts), validation chain (tier 1 + tier 2), dependency strategy, and PR creation flow.
+- [x] **Pre-run preparation** — All 5 bug fixes (#61-#65) verified closed as COMPLETED. Codebase clean on main (no run-2 artifacts). Moved Weaver schema to canonical `semconv/` location on main (PR #5). Added `orb.yaml`, `src/instrumentation.js` (ESM, graceful shutdown), and OTel peerDependencies to main permanently — future eval runs start from this clean state. Reviewed orb internals: retry behavior (1 + maxFixAttempts attempts, retryable = null/elision only), validation chain (tier 1 short-circuits, tier 2 blocking + advisory), dependency strategy, and PR creation flow.
 - [ ] **Evaluation run-3** — Execute `orb instrument src/ --verbose -y` (with PR creation enabled). Run in foreground for real-time status. Record wall-clock start and end time. Capture all output to `evaluation/run-3/orb-output.log`. Do NOT do a full dry-run first (single-file dry-run during pre-flight is sufficient).
 - [ ] **Per-file evaluation** — Evaluate every single file result. For each instrumented file: verify span names, attribute usage against Weaver schema, tracer naming consistency, import correctness, and semantic convention usage (the registry declares OTel semconv v1.37.0 as a dependency — verify the agent uses standard semconv attribute names like `db.system`, `http.method` where applicable instead of inventing custom names for concepts semconv already covers). For each skipped file (0 spans): verify the skip was correct. For each failure: determine if the failure was justified (legitimate limitation) or a bug (should have succeeded). Document in `evaluation/run-3/per-file-evaluation.md`.
 - [ ] **Rubric scoring** — Apply full 31-rule rubric: 4 gate checks first (NDS-001, NDS-002, NDS-003, API-001), then 27 quality rules across 6 dimensions. Per-rule pass/fail with specific code evidence. Calculate overall pass rate and per-dimension scores.
 - [ ] **Baseline comparison and synthesis** — Compare run-3 against run-2 and run-1. Run-2 baseline: 74% quality (20/27), 4/4 gates, NDS 100%, COV 67-100%, RST 100%, API 0%, SCH 75%, CDQ 86%, 10 files instrumented, 7 skipped, 4 failed, 0 patches, first-try success. Key metrics: overall pass rate, per-dimension scores, files instrumented vs skipped, failures and failure modes, retry utilization, wall-clock time, total cost. Document improvements and regressions.
 - [ ] **Actionable fix output** — Produce a single document addressed to the AI coding agent / spinybacked-orbweaver maintainer. List each remaining issue found in run-3 with: what's wrong, evidence (specific file, line, span), and what fix is needed. Keep it directive but not prescriptive — state the problem and desired outcome, not the implementation steps. Also assess the 3 rubric gaps from run-2 (API-004 SDK setup carve-out, coverage partial scoring, module system correctness rule) and propose rubric updates if confirmed.
+- [ ] **Draft PRD #4 for next evaluation run** — Create a PRD for evaluation run-4 following the structure of this PRD. Incorporate process improvements discovered during run-3 (what worked, what didn't, what to change). Update baselines with run-3 scores. Carry forward any unresolved bugs, spec gaps, or rubric gaps. The goal is a self-improving evaluation chain where each run's PRD encodes the lessons of previous runs.
 
 ---
 
@@ -124,3 +125,6 @@ These are encoded in the milestones but listed explicitly for reference:
 | 2026-03-12 | Fix bugs before re-running | Re-running without fixes would produce similar results; fix-then-verify is more valuable |
 | 2026-03-12 | Output format is fix instructions, not report | The evaluation should produce actionable work, not just documentation |
 | 2026-03-12 | Individual instrumentation packages, not mega-bundles | Spec v3.8 explicitly says not to use mega-bundles; agent contradicted its own spec |
+| 2026-03-13 | Move Weaver schema to `semconv/` on main permanently | Evaluation config (orb.yaml, instrumentation.js, schema) should live on main so every eval run starts from a clean state instead of recreating config each time |
+| 2026-03-13 | OTel SDK as required peerDependency, not optional | instrumentation.js unconditionally imports sdk-node; marking it optional contradicts the import. Libraries declare peers, deployers provide the SDK |
+| 2026-03-13 | Add "Draft PRD #4" as final milestone | Each eval PRD should end by drafting the next one, creating a self-improving chain that encodes process lessons while fresh |
