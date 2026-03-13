@@ -13,4 +13,16 @@ const sdk = new NodeSDK({
 
 sdk.start();
 
+const shutdown = () => {
+  sdk.shutdown()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('Error shutting down OTel SDK', err);
+      process.exit(1);
+    });
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
 export default sdk;
