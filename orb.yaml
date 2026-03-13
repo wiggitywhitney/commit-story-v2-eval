@@ -1,3 +1,4 @@
 schemaPath: semconv
 sdkInitFile: src/instrumentation.js
 dependencyStrategy: peerDependencies
+maxTokensPerFile: 150000
