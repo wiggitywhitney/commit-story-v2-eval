@@ -8,6 +8,24 @@
 
 ---
 
+## Supporting Documents
+
+All paths are relative to the `commit-story-v2-eval` repository root.
+
+| Document | Path | Contents |
+|----------|------|----------|
+| **Orb issues** | `evaluation/run-3/orb-issues-to-file.md` | 11 issues with acceptance criteria tied to specific target files |
+| **Per-file evaluation** | `evaluation/run-3/per-file-evaluation.md` | Full 31-rule rubric applied to all 21 files, structured evaluation output |
+| **Rubric scores** | `evaluation/run-3/rubric-scores.md` | Dimension-level scoring with per-rule evidence (run-2-compatible format) |
+| **Baseline comparison** | `evaluation/run-3/baseline-comparison.md` | Run-3 vs run-2 vs run-1 comparison across all dimensions |
+| **Lessons for PRD #4** | `evaluation/run-3/lessons-for-prd4.md` | Rubric gaps, process improvements, evaluation methodology changes |
+| **Orb output log** | `evaluation/run-3/orb-output.log` | Raw CLI output from main run and supplemental runs |
+| **Evaluation rubric** | `spinybacked-orbweaver/research/evaluation-rubric.md` | The 31-rule rubric (4 gates + 27 quality rules) |
+| **Rubric-codebase mapping** | `spinybacked-orbweaver/research/rubric-codebase-mapping.md` | Rule-to-code mapping for the orb agent |
+| **Instrumented branches** | `orb/instrument-1773434669510` (main), `orb/instrument-1773438620295` (supplemental) | Local branches with instrumented code (not pushed) |
+
+---
+
 ## How to Read This Document
 
 Each finding states **what's wrong**, **evidence** (file, line, span), and **desired outcome**. Findings are grouped by priority:
