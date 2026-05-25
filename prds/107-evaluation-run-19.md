@@ -158,7 +158,7 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
   Produces: `evaluation/commit-story-v2/run-19/rubric-scores.md`
   Style reference: `Read docs/templates/eval-run-style-reference/rubric-scores.md`
 
-- [ ] **IS scoring run** — Follow `docs/language-extension-plan.md` step 9. Full protocol in `evaluation/is/README.md` (commit-story-v2 section).
+- [x] **IS scoring run** — Follow `docs/language-extension-plan.md` step 9. Full protocol in `evaluation/is/README.md` (commit-story-v2 section).
 
   1. **Claude runs**: `datadog-agent stop`
   2. **Claude starts** the OTel Collector in the background:
