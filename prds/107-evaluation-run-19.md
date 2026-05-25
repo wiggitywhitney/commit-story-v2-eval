@@ -111,7 +111,7 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
 
 - [x] **Collect skeleton documents** — Create `evaluation/commit-story-v2/run-19/` directory with `lessons-for-prd20.md` skeleton. Must run before pre-run verification step 12.
 
-- [ ] **Pre-run verification** — Verify spiny-orb fixes and validate run prerequisites:
+- [x] **Pre-run verification** — Verify spiny-orb fixes and validate run prerequisites:
   1. **Handoff triage review**: Read the spiny-orb team's triage of `evaluation/commit-story-v2/run-18/actionable-fix-output.md`. Check which issues were filed (RUN18-1: PRD #845 update; RUN18-2: schema attribute or agent directive; RUN18-3: push retry logic) and confirm their status.
   2. **RUN18-1 fix** (P1 — critical): Verify PRD #845 content-aware diff has landed. Check whether any reconciler changes address the `startActiveSpan` re-indentation offset inflation. If PRD #845 M2+ has regression fixtures for the `server.tool()` callback pattern (context-capture-tool.js lines 124–125) and the multi-function pattern (summary-graph.js line 485), confirm they pass. If PRD #845 has NOT landed, still proceed — run-19 will confirm the gap persists and add a third data point.
   3. **RUN18-2 fix** (P2): Verify that `commit_story.journal.reflections_count` has been added to the schema (or an explicit negative directive added to the prompt preventing `quotes_count` reuse for reflection discovery). Check `semconv/attributes.yaml` in commit-story-v2 and `src/agent/prompt.ts` in spiny-orb.
