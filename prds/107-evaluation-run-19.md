@@ -125,7 +125,7 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
   11. **README check**: Verify `README.md` on main has rows for runs 15–18 in the commit-story-v2 run history table. If the table ends at run-14, the run-18 eval branch's README updates did not reach main yet — add the missing rows before the run.
   12. Append observations to `evaluation/commit-story-v2/run-19/lessons-for-prd20.md`.
 
-- [ ] **Evaluation run-19** — Whitney runs `spiny-orb instrument` in her own terminal. **Do NOT run the command yourself.** AI role: (1) confirm readiness with Whitney, (2) once Whitney provides the log output, save it to `evaluation/commit-story-v2/run-19/spiny-orb-output.log` and write `evaluation/commit-story-v2/run-19/run-summary.md`, (3) **if auto PR creation failed**, create the PR from the file spiny-orb already wrote to disk — do NOT write a shortened manual body: `gh pr create --body-file ~/Documents/Repositories/commit-story-v2/spiny-orb-pr-summary.md --repo wiggitywhitney/commit-story-v2 --head <instrument-branch> --title "..."`
+- [x] **Evaluation run-19** — Whitney runs `spiny-orb instrument` in her own terminal. **Do NOT run the command yourself.** AI role: (1) confirm readiness with Whitney, (2) once Whitney provides the log output, save it to `evaluation/commit-story-v2/run-19/spiny-orb-output.log` and write `evaluation/commit-story-v2/run-19/run-summary.md`, (3) **if auto PR creation failed**, create the PR from the file spiny-orb already wrote to disk — do NOT write a shortened manual body: `gh pr create --body-file ~/Documents/Repositories/commit-story-v2/spiny-orb-pr-summary.md --repo wiggitywhitney/commit-story-v2 --head <instrument-branch> --title "..."`
 
   AI must create `evaluation/commit-story-v2/run-19/debug-dumps/` before handing Whitney the command.
 
@@ -138,7 +138,7 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
 
 - [ ] **Findings Discussion** *(user-facing checkpoint 1)* — After `run-summary.md` is written, before any evaluation documents are started: report to Whitney: (1) files committed / failed / partial, (2) whether any checkpoint failures occurred, (3) RUN18-1 fix result — specifically whether context-capture-tool.js, reflection-tool.js, index.js, and summary-graph.js all committed with spans, (4) RUN18-2 result — whether journal-manager.js `discoverReflections` used a correct attribute for reflection count, (5) journal-graph.js result — did it commit again (2nd consecutive) or regress?, (6) quality score if visible, (7) cost, (8) push/PR status (auto or manual?), (9) overall attempt-count distribution (D-1 signal). Keep it conversational, under 10 lines. Wait for acknowledgment before proceeding.
 
-- [ ] **Failure deep-dives** — For each failed file AND run-level failure. Includes any partial files.
+- [x] **Failure deep-dives** — For each failed file AND run-level failure. Includes any partial files.
   Produces: `evaluation/commit-story-v2/run-19/failure-deep-dives.md`
   Style reference: `Read docs/templates/eval-run-style-reference/failure-deep-dives.md`
 
