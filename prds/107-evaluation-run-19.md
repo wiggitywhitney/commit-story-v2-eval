@@ -1,6 +1,6 @@
 # PRD #19: JS Evaluation Run-19: commit-story-v2 — NDS-003 Content-Aware Diff Verification
 
-**Status:** Ready
+**Status:** In Progress
 **Created:** 2026-05-16
 **GitHub Issue:** #107
 **Depends on:** PRD #18 (run-18 complete, actionable fix output delivered to spiny-orb team)
@@ -107,9 +107,9 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
 
 ## Milestones
 
-- [ ] **Read `docs/language-extension-plan.md` completely before proceeding with any other milestone.** Pay particular attention to step 9.5 (SPA-001 calibration note for commit-story-v2) and step 9 (IS scoring protocol). **Do not mark this complete until you have read both sections.**
+- [x] **Read `docs/language-extension-plan.md` completely before proceeding with any other milestone.** Pay particular attention to step 9.5 (SPA-001 calibration note for commit-story-v2) and step 9 (IS scoring protocol). **Do not mark this complete until you have read both sections.**
 
-- [ ] **Collect skeleton documents** — Create `evaluation/commit-story-v2/run-19/` directory with `lessons-for-prd20.md` skeleton. Must run before pre-run verification step 12.
+- [x] **Collect skeleton documents** — Create `evaluation/commit-story-v2/run-19/` directory with `lessons-for-prd20.md` skeleton. Must run before pre-run verification step 12.
 
 - [ ] **Pre-run verification** — Verify spiny-orb fixes and validate run prerequisites:
   1. **Handoff triage review**: Read the spiny-orb team's triage of `evaluation/commit-story-v2/run-18/actionable-fix-output.md`. Check which issues were filed (RUN18-1: PRD #845 update; RUN18-2: schema attribute or agent directive; RUN18-3: push retry logic) and confirm their status.
