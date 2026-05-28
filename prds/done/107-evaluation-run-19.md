@@ -1,6 +1,6 @@
 # PRD #19: JS Evaluation Run-19: commit-story-v2 — NDS-003 Content-Aware Diff Verification
 
-**Status:** In Progress
+**Status:** Complete (2026-05-28)
 **Created:** 2026-05-16
 **GitHub Issue:** #107
 **Depends on:** PRD #18 (run-18 complete, actionable fix output delivered to spiny-orb team)
@@ -136,7 +136,7 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
 
   **After saving artifacts and committing, push the eval branch to origin immediately** (`git push -u origin <eval-branch>`). The branch holds the only copy of run-19 artifacts until the "Copy artifacts to main" milestone runs — do not leave it local-only.
 
-- [ ] **Findings Discussion** *(user-facing checkpoint 1)* — After `run-summary.md` is written, before any evaluation documents are started: report to Whitney: (1) files committed / failed / partial, (2) whether any checkpoint failures occurred, (3) RUN18-1 fix result — specifically whether context-capture-tool.js, reflection-tool.js, index.js, and summary-graph.js all committed with spans, (4) RUN18-2 result — whether journal-manager.js `discoverReflections` used a correct attribute for reflection count, (5) journal-graph.js result — did it commit again (2nd consecutive) or regress?, (6) quality score if visible, (7) cost, (8) push/PR status (auto or manual?), (9) overall attempt-count distribution (D-1 signal). Keep it conversational, under 10 lines. Wait for acknowledgment before proceeding.
+- [x] **Findings Discussion** *(user-facing checkpoint 1)* — After `run-summary.md` is written, before any evaluation documents are started: report to Whitney: (1) files committed / failed / partial, (2) whether any checkpoint failures occurred, (3) RUN18-1 fix result — specifically whether context-capture-tool.js, reflection-tool.js, index.js, and summary-graph.js all committed with spans, (4) RUN18-2 result — whether journal-manager.js `discoverReflections` used a correct attribute for reflection count, (5) journal-graph.js result — did it commit again (2nd consecutive) or regress?, (6) quality score if visible, (7) cost, (8) push/PR status (auto or manual?), (9) overall attempt-count distribution (D-1 signal). Keep it conversational, under 10 lines. Wait for acknowledgment before proceeding.
 
 - [x] **Failure deep-dives** — For each failed file AND run-level failure. Includes any partial files.
   Produces: `evaluation/commit-story-v2/run-19/failure-deep-dives.md`
