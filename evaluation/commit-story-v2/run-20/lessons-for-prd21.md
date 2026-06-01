@@ -4,7 +4,8 @@ Run-20 observations to carry forward into the next evaluation run PRD.
 
 ## Process Observations
 
-<!-- Add process-level notes as the run unfolds -->
+- `spiny-orb-output.log` is gitignored (`*.log` rule in .gitignore). Must use `git add -f evaluation/commit-story-v2/run-N/spiny-orb-output.log` to stage it. This applies to every eval run.
+- `spiny-orb-live-check-report.json` is left as an untracked file in the commit-story-v2 working tree after each run. It is not committed to the eval repo. No action needed — spiny-orb overwrites it on the next run.
 
 ## Pre-run Verification Findings
 

@@ -134,17 +134,22 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
 
   **After saving artifacts and committing, push the eval branch to origin immediately** (`git push -u origin <eval-branch>`). The branch holds the only copy of run-20 artifacts until the "Copy artifacts to main" milestone runs — do not leave it local-only.
 
-- [ ] **Findings Discussion** *(user-facing checkpoint 1)* — After `run-summary.md` is written, before any evaluation documents are started: report to Whitney: (1) files committed / failed / partial, (2) whether any checkpoint failures occurred, (3) RUN19-1 fix result — specifically whether summary-manager.js `generateAndSave*` and auto-summarize.js `triggerAutoSummaries` all committed with spans, (4) RUN19-2 result — whether `getCommitData` sets output attributes beyond the input revision, (5) SCH-002 watch — did journal-manager.js use `quotes_count` again?, (6) journal-graph.js result — fourth consecutive?, (7) quality score if visible, (8) cost, (9) push/PR status (auto or manual?), (10) overall attempt-count distribution (D-1 signal). Keep it conversational, under 10 lines. Wait for acknowledgment before proceeding.
+- [x] **Findings Discussion** *(user-facing checkpoint 1)* — After `run-summary.md` is written, before any evaluation documents are started: report to Whitney: (1) files committed / failed / partial, (2) whether any checkpoint failures occurred, (3) RUN19-1 fix result — specifically whether summary-manager.js `generateAndSave*` and auto-summarize.js `triggerAutoSummaries` all committed with spans, (4) RUN19-2 result — whether `getCommitData` sets output attributes beyond the input revision, (5) SCH-002 watch — did journal-manager.js use `quotes_count` again?, (6) journal-graph.js result — fourth consecutive?, (7) quality score if visible, (8) cost, (9) push/PR status (auto or manual?), (10) overall attempt-count distribution (D-1 signal). Keep it conversational, under 10 lines. Wait for acknowledgment before proceeding.
 
 - [ ] **Failure deep-dives** — For each failed file AND run-level failure. Includes any partial files.
   Produces: `evaluation/commit-story-v2/run-20/failure-deep-dives.md`
   Style reference: `Read docs/templates/eval-run-style-reference/failure-deep-dives.md`
 
+  **Run-20 failures**: 1 failed file, 0 partial files.
+  - `src/mcp/server.js` — NDS-003 oscillation: 21 duplicate violations at fixed line numbers across all 3 attempts (lines 1, 3–20, 37, 39). Was clean in run-19. Debug dump at `evaluation/commit-story-v2/run-20/debug-dumps/src/mcp/server.js`. This is a new failure class — PRD #885 multiLine fix resolved run-19's indentation-driven patterns but did NOT prevent this oscillation. Root cause unknown; debug dump analysis required.
+
 - [ ] **Per-file evaluation** — Full rubric on ALL files (no spot-checking). Evaluate all rules across all committed and partial files.
   Produces: `evaluation/commit-story-v2/run-20/per-file-evaluation.md`
   Style reference: `Read docs/templates/eval-run-style-reference/per-file-evaluation.md`
 
-  **(D-2) Use one agent per file**: Spawn one agent per file in parallel; each agent reads style reference, `evaluation/commit-story-v2/run-19/per-file-evaluation.md` (for rule descriptions), original source (`git show main:src/file`), committed source (`git show <instrument-branch>:src/file`), agent notes from log, debug dump if applicable, and schema (`semconv/attributes.yaml`); each writes its section to `evaluation/commit-story-v2/run-20/per-file-sections/<filename>.md`; main context assembles into per-file-evaluation.md. Correct-skip files: one batch agent for RST-001 verification.
+  **Instrument branch**: `spiny-orb/instrument-1780313045724`
+
+  **(D-2) Use one agent per file**: Spawn one agent per file in parallel; each agent reads style reference, `evaluation/commit-story-v2/run-19/per-file-evaluation.md` (for rule descriptions), original source (`git show main:src/file`), committed source (`git show spiny-orb/instrument-1780313045724:src/file`), agent notes from log, debug dump if applicable, and schema (`semconv/attributes.yaml`); each writes its section to `evaluation/commit-story-v2/run-20/per-file-sections/<filename>.md`; main context assembles into per-file-evaluation.md. Correct-skip files: one batch agent for RST-001 verification.
 
   **(D-1) Track attempt counts**: For each file, note attempts. Assess whether ≥2-attempt files show better quality (real fixes) vs noise (formatting churn).
 
