@@ -136,12 +136,12 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
 
 - [x] **Findings Discussion** *(user-facing checkpoint 1)* — After `run-summary.md` is written, before any evaluation documents are started: report to Whitney: (1) files committed / failed / partial, (2) whether any checkpoint failures occurred, (3) RUN19-1 fix result — specifically whether summary-manager.js `generateAndSave*` and auto-summarize.js `triggerAutoSummaries` all committed with spans, (4) RUN19-2 result — whether `getCommitData` sets output attributes beyond the input revision, (5) SCH-002 watch — did journal-manager.js use `quotes_count` again?, (6) journal-graph.js result — fourth consecutive?, (7) quality score if visible, (8) cost, (9) push/PR status (auto or manual?), (10) overall attempt-count distribution (D-1 signal). Keep it conversational, under 10 lines. Wait for acknowledgment before proceeding.
 
-- [ ] **Failure deep-dives** — For each failed file AND run-level failure. Includes any partial files.
+- [x] **Failure deep-dives** — For each failed file AND run-level failure. Includes any partial files.
   Produces: `evaluation/commit-story-v2/run-20/failure-deep-dives.md`
   Style reference: `Read docs/templates/eval-run-style-reference/failure-deep-dives.md`
 
   **Run-20 failures**: 1 failed file, 0 partial files.
-  - `src/mcp/server.js` — NDS-003 oscillation: 21 duplicate violations at fixed line numbers across all 3 attempts (lines 1, 3–20, 37, 39). Was clean in run-19. Debug dump at `evaluation/commit-story-v2/run-20/debug-dumps/src/mcp/server.js`. This is a new failure class — PRD #885 multiLine fix resolved run-19's indentation-driven patterns but did NOT prevent this oscillation. Root cause unknown; debug dump analysis required.
+  - `src/mcp/server.js` — NDS-003 oscillation: 21 duplicate violations at fixed line numbers across all 3 attempts (lines 1, 3–20, 37, 39). Was clean in run-19. Root cause confirmed: PRD #885 introduced `stripOtelNodes` + `normalizeMultiLineFlags` comparison pipeline; when the agent places the OTel import first in the file, ts-morph removes that node's leading trivia (shebang + file-level JSDoc) with it. `normalizedStripped` is therefore missing those 21 lines vs `normalizedOriginal`. This is a spiny-orb false positive — the agent's code was correct. Fix location: `removeOtelImports` in `nds003-ast-stripper.ts` — transfer leading trivia to the next statement before removing a first-position OTel import.
 
 - [ ] **Per-file evaluation** — Full rubric on ALL files (no spot-checking). Evaluate all rules across all committed and partial files.
   Produces: `evaluation/commit-story-v2/run-20/per-file-evaluation.md`
