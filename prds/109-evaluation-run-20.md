@@ -105,11 +105,11 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
 
 ## Milestones
 
-- [ ] **Read `docs/language-extension-plan.md` completely before proceeding with any other milestone.** Pay particular attention to step 9.5 (SPA-001 calibration note for commit-story-v2) and step 9 (IS scoring protocol). **Do not mark this complete until you have read both sections.**
+- [x] **Read `docs/language-extension-plan.md` completely before proceeding with any other milestone.** Pay particular attention to step 9.5 (SPA-001 calibration note for commit-story-v2) and step 9 (IS scoring protocol). **Do not mark this complete until you have read both sections.**
 
-- [ ] **Collect skeleton documents** — Create `evaluation/commit-story-v2/run-20/` directory with `lessons-for-prd21.md` skeleton. Must run before pre-run verification step 12.
+- [x] **Collect skeleton documents** — Create `evaluation/commit-story-v2/run-20/` directory with `lessons-for-prd21.md` skeleton. Must run before pre-run verification step 12.
 
-- [ ] **Pre-run verification** — Verify spiny-orb fixes and validate run prerequisites:
+- [x] **Pre-run verification** — Verify spiny-orb fixes and validate run prerequisites:
   1. **Handoff triage review**: Read the spiny-orb team's triage of `evaluation/commit-story-v2/run-19/actionable-fix-output.md`. Check which issues were filed and confirm their status.
   2. **RUN19-1 fix** (P1 — critical): Verify PRD #885 (NDS-003 multiLine flag normalization) has landed. Check `checkNonInstrumentationDiffNormalized` in `src/languages/javascript/rules/nds003.ts` — does it reset `multiLine: false` on `ObjectLiteralExpression` and `ArrayLiteralExpression` nodes before Prettier runs? If PRD #885 has regression fixtures for the return-object-literal and spread-array patterns from run-19 debug dumps, confirm they pass. If PRD #885 has NOT landed, still proceed — run-20 will confirm the gap persists.
   3. **RUN19-2 fix** (P2): Verify prompt guidance for `getCommitData` has been updated to require `commit_story.commit.message` (with `isRecording()` guard) and `commit_story.commit.timestamp`. Check whether new schema attributes (`commit_story.git.is_merge`, `commit_story.git.parent_count`, `commit_story.git.command`) were added to `semconv/attributes.yaml` in the **target repo** (`~/Documents/Repositories/commit-story-v2/semconv/attributes.yaml`) — these attributes go in the target fork, not in spiny-orb.
@@ -125,7 +125,7 @@ The **evaluation execution branch** created by `/prd-start` from main **never me
 
 - [ ] **Evaluation run-20** — Whitney runs `spiny-orb instrument` in her own terminal. **Do NOT run the command yourself.** AI role: (1) confirm readiness with Whitney, (2) once Whitney provides the log output, save it to `evaluation/commit-story-v2/run-20/spiny-orb-output.log` and write `evaluation/commit-story-v2/run-20/run-summary.md`, (3) **if auto PR creation failed**, create the PR from the file spiny-orb already wrote to disk — do NOT write a shortened manual body: `gh pr create --body-file ~/Documents/Repositories/commit-story-v2/spiny-orb-pr-summary.md --repo wiggitywhitney/commit-story-v2 --head <instrument-branch> --title "..."`
 
-  AI must create `evaluation/commit-story-v2/run-20/debug-dumps/` before handing Whitney the command.
+  `evaluation/commit-story-v2/run-20/debug-dumps/` already exists. Do not attempt to create it again.
 
   **Exact command** (run from `~/Documents/Repositories/commit-story-v2`):
   ```bash
